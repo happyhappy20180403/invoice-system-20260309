@@ -19,8 +19,8 @@
 - Implements: REQ-014, REQ-004, REQ-005
 - Depends: TASK-001
 - Effort: 1.5 day(s)
-- Description: Drizzle ORM + better-sqlite3 を導入し、schema.ts に全6テーブル（xero_tokens, invoice_history, contacts_cache, accounts_cache, tracking_categories_cache, created_invoices）を定義する。Drizzle migration を実行し SQLite ファイルが生成されることを確認する。
-- Acceptance: `npx drizzle-kit push` が成功し、SQLite ファイルに6テーブルが存在する。各テーブルのカラム定義が requirements.md の仕様と一致する。
+- Description: Drizzle ORM + better-sqlite3 を導入し、schema.ts に全6テーブル（xero_tokens, invoice_history, contacts_cache, account_code_mappings, created_invoices, system_config）を定義する。Drizzle migration を実行し SQLite ファイル（data/invoice.db）が生成されることを確認する。
+- Acceptance: `npx drizzle-kit push` が成功し、data/invoice.db に6テーブルが存在する。各テーブルのカラム定義が design.md Section 4.1 の ER 図と一致する。
 
 ### TASK-003: 環境変数テンプレートと .gitignore 設定
 - Phase: 0
@@ -525,11 +525,11 @@ gantt
 | REQ-005 | AccountCode 自動補完 | TASK-004, TASK-014, TASK-016, TASK-017, TASK-019, TASK-024, TASK-034 |
 | REQ-006 | Description 自動補完 | TASK-004, TASK-014, TASK-019, TASK-020, TASK-034 |
 | REQ-007 | TrackingOption1 自動補完 | TASK-004, TASK-014, TASK-016, TASK-019, TASK-022, TASK-034 |
-| REQ-008 | TrackingOption2 自動補完 | TASK-016, TASK-019, TASK-022 |
+| REQ-008 | TrackingOption2 自動補完 | TASK-016, TASK-019, TASK-022, TASK-039 |
 | REQ-009 | Reference 自動判定 | TASK-004, TASK-014, TASK-019, TASK-021 |
-| REQ-010 | Address 自動補完 | TASK-019 |
+| REQ-010 | Address 自動補完 | TASK-019, TASK-040 |
 | REQ-011 | インボイスプレビュー画面 | TASK-025, TASK-027, TASK-037 |
-| REQ-012 | DueDate 自動計算 | TASK-019 |
+| REQ-012 | DueDate 自動計算 | TASK-019, TASK-040 |
 | REQ-013 | Xero DRAFT インボイス作成 | TASK-011, TASK-012, TASK-026, TASK-029, TASK-030, TASK-031, TASK-035 |
 | REQ-014 | インボイス作成ログ保存 | TASK-002, TASK-030, TASK-035 |
 | REQ-015 | キャッシュ同期 | TASK-018, TASK-032 |
@@ -541,9 +541,29 @@ gantt
 
 ---
 
+## Addendum: Additional Tasks (CC Review)
+
+### TASK-039: getTrackingCategoriesAction 実装
+- Phase: 2
+- Implements: REQ-007, REQ-008
+- Depends: TASK-011, TASK-016
+- Effort: 0.5 day(s)
+- Description: app/actions/sync.ts に getTrackingCategoriesAction を実装する。Xero API から TrackingCategories を取得し、NATURE OF ACCOUNT（28値）と Categories/Projects（25値）のリストを返す。キャッシュ TTL 24 時間。
+- Acceptance: TrackingOption1 に 28 値、TrackingOption2 に 25 値が返る。24 時間以内の再呼び出しでキャッシュヒット。
+
+### TASK-040: REQ-010 Address / REQ-012 DueDate 個別検証
+- Phase: 5
+- Implements: REQ-010, REQ-012
+- Depends: TASK-019
+- Effort: 0.5 day(s)
+- Description: fuzzyMatchAction の出力に含まれる Address（SAAddressLine1）と DueDate の自動補完精度を個別テストする。ContactName マッチ時に Xero Contact の SAAddressLine1 が正しく取得されること、DueDate が Contact の payment terms に基づいて計算されること（取得できない場合は InvoiceDate と同日にフォールバック）を検証する。
+- Acceptance: 20 件のテストケースで Address 取得率 90%以上。DueDate が payment terms から正しく算出される。フォールバック動作の確認。
+
+---
+
 ## Summary
 
-- **Total Tasks:** 38
-- **Total Effort:** ~38 person-days (8 weeks)
+- **Total Tasks:** 40
+- **Total Effort:** ~39 person-days (8 weeks)
 - **Critical Path:** TASK-001 → TASK-002 → TASK-004 → TASK-014 → TASK-019 → TASK-023 → TASK-027 → TASK-038
 - **Phase 1 MVP Deadline:** 2026-05-01 (8 weeks from 2026-03-10)

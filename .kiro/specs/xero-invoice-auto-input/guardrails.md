@@ -15,18 +15,20 @@
 | Accountant (SH-002) | View created_invoices audit log, view DRAFT invoices in Xero | None via this system (uses Xero directly to AUTHORISE) | None |
 | Admin (SH-003) | All read operations | All write operations | Xero OAuth connect/disconnect, data sync, token management, DB backup |
 
-### API Route Permission Matrix
+### Endpoint / Action Permission Matrix
 
-| API Route | Staff | Admin | Auth Required |
-|-----------|-------|-------|---------------|
-| GET /api/contacts/search | Yes | Yes | Yes |
-| GET /api/accounts | Yes | Yes | Yes |
-| GET /api/tracking-categories | Yes | Yes | Yes |
-| POST /api/invoices/create | Yes | Yes | Yes |
-| GET /api/invoices/history | Yes | Yes | Yes |
-| POST /api/xero/connect | No | Yes | Yes |
-| POST /api/xero/sync | No | Yes | Yes |
-| GET /api/xero/health | No | Yes | Yes |
+> 本システムは Next.js Server Actions を主要な通信手段とする。REST Route Handler は OAuth コールバックと運用エンドポイントのみ。
+
+| Endpoint / Action | Type | Staff | Admin | Auth Required |
+|-------------------|------|-------|-------|---------------|
+| `fuzzyMatchAction` | Server Action | Yes | Yes | Yes |
+| `createInvoiceAction` | Server Action | Yes | Yes | Yes |
+| `syncContactsCacheAction` | Server Action | No | Yes | Yes |
+| `getTrackingCategoriesAction` | Server Action | No | Yes | Yes |
+| GET/POST `/api/auth/[...nextauth]` | Route Handler | Yes | Yes | No |
+| GET `/api/xero/connections` | Route Handler | No | Yes | Session |
+| POST `/api/xero/sync` | Route Handler | No | Yes | Session |
+| GET `/api/xero/health` | Route Handler | No | Yes | Session |
 
 ### Principle of Least Privilege
 
@@ -166,7 +168,31 @@ Every log entry answers:
 | Specify InvoiceNumber | Xero auto-numbers (ADR-005) | Field omitted from API payload |
 | Change Currency from MYR | MYR fixed (REQ-016, ASM-003) | Hardcoded in API payload |
 | Change TaxType from Tax Exempt | Tax Exempt fixed (REQ-016, ASM-003) | Hardcoded in API payload |
-| Access system without Auth.js session | All routes require authentication (REQ-SEC-004) | Middleware check on every API route |
+| Access system without Auth.js session | All routes require authentication (REQ-SEC-004) | Middleware check on every route and Server Action |
+| Store tokens/secrets in logs | Credential leakage prevention (REQ-SEC-006) | Structured logging with field allowlist; token values redacted |
+| Send verbose errors to client | PII/internal info leakage prevention (REQ-SEC-003) | Production mode disables detailed error messages; API responses sanitized |
+
+### Session Security (REQ-SEC-001)
+
+| Setting | Value | Enforcement | Reference |
+|---------|-------|-------------|-----------|
+| Session idle timeout | 30 minutes | Auth.js session maxAge config | REQ-SEC-001 (threat S-03: shared PC) |
+| Session absolute timeout | 8 hours | Auth.js JWT exp claim | Best practice |
+| Cookie flags | HttpOnly, SameSite=Strict | Auth.js default + config | Threat S-01, S-02 |
+
+### Logging Security (REQ-SEC-006)
+
+- Structured JSON logging with explicit field allowlist
+- Token values (access_token, refresh_token) NEVER appear in logs
+- Xero API error responses are sanitized before logging (remove full stack traces, token fragments)
+- Log rotation: 30-day retention for application logs
+
+### OAuth Scope Migration (REQ-SEC-007)
+
+- Current: broad scopes (accounting.transactions, accounting.contacts, accounting.settings)
+- Target: granular scopes (accounting.invoices.read/write, etc.) when available (May 2026)
+- Deadline: September 2027 (apps created before 2026/03/02)
+- Migration effort: 1 hour (single auth.ts scope string change + user re-authorization)
 
 ### Rate Limits
 

@@ -12,5 +12,25 @@
     "open_questions": 0,
     "banned_word_total": 0
   },
-  "violations": []
+  "violations": [],
+  "maturity_level": "L3",
+  "sdd_artifacts": {
+    "requirements.md": "complete",
+    "design.md": "complete",
+    "slo.md": "complete",
+    "threat-model.md": "complete",
+    "guardrails.md": "complete",
+    "runbook.md": "complete",
+    "tasks.md": "complete",
+    "adr/README.md": "complete"
+  },
+  "cross_checks": {
+    "CC-001": "PASS (fixed: REQ-010/012 tasks added)",
+    "CC-002": "PASS",
+    "CC-003": "PASS (fixed: SLI measurement path, error rate boundary)",
+    "CC-004": "PASS (fixed: REQ-SEC-001/003/006/007 added to guardrails)",
+    "CC-005": "PASS (fixed: latency/error-budget runbook added, DB filename unified)",
+    "CC-006": "PASS (fixed: table names unified, TASK-039 added)",
+    "CC-007": "PASS (fixed: DB filename, table names, API paths unified)"
+  }
 }
