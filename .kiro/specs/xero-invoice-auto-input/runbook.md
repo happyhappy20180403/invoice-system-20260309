@@ -1,564 +1,825 @@
-# Runbook - Xero Invoice Auto-Input System
+# Runbook: Xero Invoice Auto-Input System
 
-> インシデント対応手順書（localhost:3000 運用）
-
----
-
-## 1. 重大度定義（Severity Levels）
-
-| レベル | 定義 | 応答時間 | 解決目標 | 例 |
-|--------|------|---------|---------|-----|
-| SEV1 | システム完全停止。インボイス作成不可 | 15分 | 1時間 | サーバーダウン、DB破損、全トークン失効 |
-| SEV2 | コア機能が著しく劣化。手動回避策が必要 | 30分 | 4時間 | Xero API障害、自動補完全滅、トークンリフレッシュ失敗 |
-| SEV3 | 一部機能が劣化。業務は継続可能 | 2時間 | 1営業日 | レート制限接近、一部キャッシュ不整合、レイテンシ悪化 |
-| SEV4 | 軽微な問題。ユーザー影響なし〜最小限 | 1営業日 | 1週間 | ログ出力エラー、UIの軽微なバグ |
-
-### エスカレーションフロー
-
-```
-SEV4 → 開発者が次回スプリントで対応
-SEV3 → 開発者が当日中に調査開始
-SEV2 → 開発者 + SH-003（システム管理者）に即時通知
-SEV1 → 開発者 + SH-003 + SH-002（会計担当者）に即時通知
-         → Xero管理画面での手動入力を代替手段として案内
-```
+**Service:** Xero Invoice Auto-Input System
+**URL:** localhost:3000
+**Stack:** Next.js 15, xero-node SDK, SQLite (WAL mode), Auth.js v5
+**Version:** 2.0
+**Date:** 2026-03-10
+**Owner:** Developer (SH-003)
+**Review Frequency:** Monthly during Phase 1; quarterly thereafter
 
 ---
 
-## 2. インシデントシナリオ
+## 1. Severity Definitions
+
+| Level | Name | Description | Response Time | Examples |
+|-------|------|-------------|---------------|---------|
+| SEV-1 | Critical | System completely unusable; invoices cannot be created; data loss possible or active | 15 minutes | Server down (5xx on all routes), SQLite corruption, complete Xero API outage, all invoice submissions failing |
+| SEV-2 | High | Core functionality impaired but a manual workaround exists; SLO burn rate is high | 1 hour | Xero access token expired and auto-refresh failing, refresh token expired (re-auth required), rate limit exhausted for the day, Auth.js session loop preventing login |
+| SEV-3 | Medium | A specific feature is degraded with minor impact; no data is lost | 4 hours | Fuzzy match returning wrong suggestions, autocomplete P95 latency above 500 ms, build failure after dependency update, wrong invoice type (DEBIT NOTE vs INVOICE) |
+| SEV-4 | Low | Cosmetic issue, minor inconvenience, or non-functional monitoring noise | Next business day | UI label mismatch, outdated cached tracking categories, non-critical log noise, documentation error |
+
+### SLO Alignment
+
+Severity ratings align with the SLO error budget burn rates defined in `slo.md`:
+
+| Budget Consumed | Status | SEV Guidance |
+|-----------------|--------|--------------|
+| 0-50% | GREEN | Normal operations; most issues are SEV-3 or SEV-4 |
+| 50-80% | YELLOW | Elevated vigilance; recurring SEV-3 patterns may indicate a latent SEV-2 |
+| 80-100% | ORANGE | New feature development paused; treat all failures as SEV-2 or higher |
+| 100%+ | RED | All development stopped; declare SEV-1, execute full incident response |
 
 ---
 
-### 2.1 Xero OAuthトークン失効（REQ-002, EH-003）
-
-**重大度**: SEV2
-**検知方法**: アラート `XeroTokenExpired` / ユーザーに「Xeroセッションが期限切れです」メッセージが表示
-
-#### 症状
-- Xero APIへの全リクエストが HTTP 401 を返す
-- ユーザーがログイン画面にリダイレクトされる
-- `xero_tokens` テーブルの `refresh_token_expires_at` が過去の日時
-
-#### 診断手順
-
-```bash
-# 1. トークンの状態を確認
-sqlite3 data/invoice.db \
-  "SELECT id, expires_at, refresh_token_expires_at, updated_at FROM xero_tokens ORDER BY id DESC LIMIT 1;"
-
-# 2. 最後のトークンリフレッシュ試行を確認
-# Next.jsのコンソールログを確認
-# Windows: PowerShellのログ / ターミナル出力を確認
-
-# 3. Xero Developer Portalで接続状態を確認
-# https://developer.xero.com/ → My Apps → 接続状態
-```
-
-#### 復旧手順
-
-```
-1. SH-003（システム管理者）に連絡
-2. ブラウザで http://localhost:3000 にアクセス
-3. 「Connect to Xero」ボタンをクリック
-4. Xero認証画面でログインし、アクセスを許可
-5. 認証完了後、ダッシュボードが表示されることを確認
-6. テストとして1件のインボイスプレビュー（送信しない）を実行し、Xero APIが応答することを確認
-```
-
-#### 予防策
-- リフレッシュトークンの有効期限は60日。2週間に1回以上はシステムを使用する
-- `XeroTokenExpiringSoon` アラート（残り14日）で事前に再認証を促す
+## 2. Common Incidents and Response Procedures
 
 ---
 
-### 2.2 Xero APIレート制限ヒット（REQ-903, EH-018）
+### INC-001: Xero Access Token Expired During Submission
 
-**重大度**: SEV3（通常） / SEV2（日次上限到達時）
-**検知方法**: アラート `XeroRateLimitApproaching` / `XeroDailyLimitExhausted` / ユーザーに「レート制限に達しました」メッセージ
+**Severity:** SEV-2
+**Risk Register Reference:** R-01 (HIGH risk — access token expiry during form submission)
+**SLO Impact:** Contributes to SLO-005 (Xero API success rate >= 99%)
 
-#### 症状
-- Xero APIが HTTP 429 を返す
-- インボイス作成時に「Xeroのレート制限に達しました。2分後に再試行してください。」メッセージ
-- 日次上限到達時: 「本日のXero API使用上限に達しました。明日再試行してください。」メッセージ
+#### Detection
 
-#### 診断手順
+- Xero API calls return HTTP 401.
+- Application logs contain: `401 Unauthorized` from `xero-node` or `lib/xero/xero-service.ts`.
+- Prometheus alert `XeroTokenExpired` fires (if metrics endpoint is active).
+- Users report "Invoice submission failed" error in the UI.
 
-```bash
-# 1. 日次API使用量を確認
-sqlite3 data/invoice.db \
-  "SELECT key, value, updated_at FROM system_config WHERE key IN ('xero_daily_count', 'xero_daily_reset_at');"
+#### Diagnosis
 
-# 2. 直近のAPIリクエスト頻度を確認（ログから）
-# アプリケーションログで "429" または "rate limit" を検索
+1. Check the application logs for the 401 response and the endpoint that triggered it.
+2. Query the token table to inspect the current token state:
+   ```sql
+   SELECT id, tenant_id, expires_at, updated_at FROM xero_tokens ORDER BY updated_at DESC LIMIT 1;
+   ```
+3. Compare `expires_at` against the current UTC time. A value in the past confirms token expiry.
+4. Check whether the TokenManager attempted a proactive refresh by searching logs for `TokenManager: refreshing token` within the 5-minute window before expiry.
+5. Call the health endpoint to get a live status report:
+   ```
+   GET /api/xero/health
+   ```
+   Expected response when token is expired:
+   ```json
+   { "tokenStatus": "expired", "canRefresh": true }
+   ```
 
-# 3. Xeroレスポンスヘッダーの制限情報を確認
-# X-MinLimit-Remaining, X-DayLimit-Remaining
+#### Fix
+
+**Case A: Access token expired, refresh token still valid**
+
+The health endpoint will attempt a refresh automatically. If the automatic refresh succeeds, the system self-heals. Verify by re-submitting the failed invoice.
+
+If the health endpoint returns an error, manually trigger the refresh flow by calling:
 ```
-
-#### 復旧手順
-
-**分間制限（60req/min）の場合:**
+GET /api/xero/health
 ```
-1. 60秒待機する（自動リトライが指数バックオフで実行される）
-2. リトライが全て失敗した場合、2分待ってから再度「Xeroへ送信」ボタンを押す
-3. 繰り返し発生する場合、バッチ的な操作を控え、1件ずつ間隔を空けて送信する
-```
+Monitor logs for `TokenManager: token refreshed successfully`.
 
-**日次制限（4,500req/day）の場合:**
-```
-1. 本日の残りの作業はXero管理画面から手動で入力する
-2. 翌日00:00 UTC（08:00 MYT）にカウンタがリセットされる
-3. 根本原因を調査: どの操作が大量のAPIコールを発生させたか確認
-4. 必要に応じてキャッシュTTLを延長（Contacts: 60分→120分、Accounts: 24時間→48時間）
-```
+**Case B: Refresh token also expired (invalid_grant)**
 
-#### 予防策
-- p-queueによる50req/min制限が正常に動作していることを確認
-- キャッシュを活用し、不要なAPI呼び出しを削減
-- 「データ同期」ボタンの連打を避ける
+Proceed to INC-002.
+
+**Case C: TokenManager mutex deadlock (refresh never attempted)**
+
+1. Restart the Next.js server process to clear in-memory state.
+2. After restart, the next request will trigger a fresh token check.
+3. If the issue recurs, add a log probe to the mutex acquisition path and escalate to a code fix.
+
+#### Verification
+
+- Call `GET /api/xero/health` and confirm `tokenStatus: "active"`.
+- Submit a test invoice through the UI and confirm it reaches Xero as a DRAFT.
+- Confirm the `created_invoices` table shows `status = SUBMITTED` (not `PENDING_XERO` or `FAILED`).
+
+#### Post-Mortem Triggers
+
+Open a post-mortem if:
+- The proactive 5-minute refresh did not fire as expected (indicates a bug in TokenManager).
+- More than one user was affected before the issue was detected.
+- The incident consumed more than 20% of the monthly error budget (SLO-005: approximately 1 failure out of 5 allowed per month).
 
 ---
 
-### 2.3 Xero APIダウン / 到達不能（EH-001）
+### INC-002: Xero Refresh Token Expired (60-Day Inactivity)
 
-**重大度**: SEV2
-**検知方法**: アラート `XeroApiErrorRate` / ユーザーに「Xeroに接続できません」メッセージ
+**Severity:** SEV-2 (escalates to SEV-1 if no admin is available to re-authorize)
+**Risk Register Reference:** R-02 (HIGH risk — refresh token expiry after 60 days of inactivity)
+**SLO Impact:** SLO-001 (availability) and SLO-005 (API success rate)
 
-#### 症状
-- Xero APIへのリクエストがタイムアウトまたは HTTP 500/502/503 を返す
-- 自動補完はローカルキャッシュで動作するが、インボイス作成は不可
-- 「Xero接続エラー: ローカルデータで検索中」通知が表示される
+#### Detection
 
-#### 診断手順
+- Xero OAuth2 refresh call returns `error: invalid_grant`.
+- Application logs contain: `refresh token expired` or `invalid_grant`.
+- Prometheus alert `XeroTokenExpired` fires.
+- `GET /api/xero/health` returns `{ "tokenStatus": "expired", "canRefresh": false }`.
+- All invoice submissions fail; users cannot create any invoices.
 
-```bash
-# 1. Xero APIの疎通確認
-curl -s -o /dev/null -w "%{http_code}" https://api.xero.com/api.xro/2.0/Organisation
+#### Diagnosis
 
-# 2. Xeroステータスページを確認
-# https://status.xero.com/
+1. Confirm the error type is `invalid_grant` (not a network error or misconfiguration):
+   ```
+   GET /api/xero/health
+   ```
+2. Check `xero_tokens` table for the `updated_at` timestamp. If the last update was more than 60 days ago, the refresh token has expired due to inactivity.
+3. Confirm whether the weekly cron job running the token health check was active (see Section 6, Maintenance Procedures). A missed or non-existent cron is typically the root cause.
 
-# 3. DNSとネットワークの確認
-nslookup api.xero.com
-ping api.xero.com
+#### Fix
 
-# 4. ローカルネットワーク/プロキシの確認
-curl -v https://api.xero.com/api.xro/2.0/ 2>&1 | head -30
-```
+Re-authorization by an administrator is the only recovery path. There is no programmatic fix.
 
-#### 復旧手順
+1. An administrator with Xero account access navigates to:
+   ```
+   http://localhost:3000/login
+   ```
+2. Click "Connect to Xero" to initiate the OAuth2 authorization flow.
+3. Complete the Xero login and grant the requested scopes.
+4. Auth.js stores the new access token and refresh token in `xero_tokens`.
+5. Verify the new token is active:
+   ```
+   GET /api/xero/health
+   ```
+   Expected: `{ "tokenStatus": "active", "canRefresh": true }`
 
-```
-1. https://status.xero.com/ でXeroの障害情報を確認
-2. Xero側の障害の場合:
-   a. ユーザーに状況を伝える
-   b. 緊急のインボイスはXero管理画面（Webブラウザ直接アクセス）で手動入力
-   c. Xero復旧後に残りを本システムで処理
-3. ネットワーク障害の場合:
-   a. ルーター/モデムを再起動
-   b. DNS設定を確認（8.8.8.8 / 1.1.1.1）
-   c. プロキシ設定を確認
-4. 復旧確認: http://localhost:3000 でテストインボイスのプレビューを実行
-```
+**Important:** Invoice history, SQLite data, and Fuse.js caches are not affected. Only the Xero OAuth connection is lost and restored. No data needs to be re-imported.
+
+#### Verification
+
+- `GET /api/xero/health` returns `tokenStatus: "active"`.
+- Submit a test invoice and confirm DRAFT creation in Xero.
+- Confirm the weekly cron job for token health check is scheduled and running to prevent recurrence.
+
+#### Post-Mortem Triggers
+
+Always open a post-mortem for this incident. Root cause is typically a failed or absent weekly cron job. The Prometheus alert `XeroTokenExpiringSoon` (fires at 14 days remaining) should have provided advance warning. If it did not fire, that is a secondary action item.
 
 ---
 
-### 2.4 SQLiteデータベース破損（リスク R-07）
+### INC-003: Xero API Rate Limit Hit (HTTP 429)
 
-**重大度**: SEV1
-**検知方法**: アプリケーションエラー「SQLITE_CORRUPT」/ システム起動失敗
+**Severity:** SEV-2 (minute limit, transient) / SEV-1 (daily limit exhausted)
+**Risk Register Reference:** R-03 (HIGH risk — rate limit during batch operations)
+**SLO Impact:** SLO-006 (100% rate limit compliance, zero 429 responses per day)
 
-#### 症状
-- アプリケーションが起動しない、またはDB操作でエラーが発生
-- `SQLITE_CORRUPT`, `SQLITE_NOTADB`, `database disk image is malformed` エラー
-- 自動補完が動作しない（履歴データ参照不可）
+#### Detection
 
-#### 診断手順
+- Xero API calls return HTTP 429.
+- Application logs contain: `429 Too Many Requests`.
+- `X-MinLimit-Remaining` header value drops to 0.
+- Prometheus alerts `XeroRateLimitApproaching` (fewer than 10 remaining) or `XeroDailyLimitApproaching` (fewer than 500 remaining) fire.
+- Users report slow invoice submissions or submission failures during batch operations.
 
-```bash
-# 1. データベースファイルの存在とサイズを確認
-ls -la data/invoice.db
-ls -la data/invoice.db-wal
-ls -la data/invoice.db-shm
+#### Diagnosis
 
-# 2. 整合性チェック
-sqlite3 data/invoice.db "PRAGMA integrity_check;"
+**Step 1: Identify the limit type**
 
-# 3. バックアップファイルの確認
-ls -la data/backups/
+Check the response headers from the last 429 error in logs:
+- `X-MinLimit-Remaining`: minute-level limit (50 req/min)
+- `X-DayLimit-Remaining`: daily limit (4,500 req/day)
 
-# 4. SQLiteのバージョン確認
-sqlite3 --version
-```
-
-#### 復旧手順
+**Step 2: Check current rate limit counters**
 
 ```
-【方法1: バックアップからの復元（推奨）】
-1. 現在の破損DBをリネーム
-   mv data/invoice.db data/invoice.db.corrupted
-   mv data/invoice.db-wal data/invoice.db-wal.corrupted 2>/dev/null
-   mv data/invoice.db-shm data/invoice.db-shm.corrupted 2>/dev/null
+GET /api/xero/health
+```
+Review the `rateLimitStatus` fields in the response.
 
-2. 最新のバックアップから復元
-   cp data/backups/invoice-system-YYYYMMDD.db data/invoice.db
+**Step 3: Identify the source of excess requests**
 
-3. アプリケーションを再起動
-   # Ctrl+C で停止後
-   npm run dev
+Search logs for the last 5 minutes of API calls. Look for:
+- Repeated identical requests indicating a retry loop bug.
+- Unexpected batch processing running outside scheduled windows.
+- Multiple concurrent users submitting invoices simultaneously.
 
-4. データの確認
-   - 自動補完が動作することを確認
-   - 復元時点以降に作成したインボイスのログが欠損していないか確認
-   - 欠損がある場合、Xero管理画面のインボイスリストと照合
+**Step 4: Check system_config for the daily counter**
 
-【方法2: 部分復旧（バックアップが古い場合）】
-1. 破損DBからデータ抽出を試みる
-   sqlite3 data/invoice.db.corrupted ".dump" > dump.sql 2>/dev/null
+```sql
+SELECT key, value, updated_at FROM system_config WHERE key LIKE 'xero_daily%';
+```
 
-2. 新しいDBに復元
-   sqlite3 data/invoice-system-recovered.db < dump.sql
+#### Fix
 
-3. 復元結果を確認
-   sqlite3 data/invoice-system-recovered.db "PRAGMA integrity_check;"
+**Case A: Minute limit hit (transient)**
 
-4. 問題なければ本番DBとして配置
-   mv data/invoice-system-recovered.db data/invoice.db
+The p-queue retry logic applies exponential backoff (1s, 2s, 4s, 8s, 16s, maximum 5 retries) and should recover automatically within 60 seconds. No manual action is required unless the queue is in a runaway retry loop.
 
-【方法3: 完全再構築（バックアップなし・復旧不可の場合）】
-1. DBスキーマを再作成（マイグレーション実行）
+To verify recovery:
+- Wait 60 seconds.
+- Check that `X-MinLimit-Remaining` resets in the next Xero API response.
+- Confirm submissions resume without further 429 responses.
+
+**Case B: Runaway retry loop detected**
+
+1. Restart the Next.js server to flush the p-queue.
+2. Investigate the code path that caused the loop before restarting submissions.
+3. If a code bug is confirmed, patch and redeploy before allowing batch operations to resume.
+
+**Case C: Daily limit exhausted (X-DayLimit-Remaining below 100)**
+
+1. Stop all new invoice submissions immediately. Advise users to wait until midnight UTC (08:00 MYT) when the daily counter resets.
+2. Check `system_config` daily counter for accuracy:
+   ```sql
+   SELECT value FROM system_config WHERE key = 'xero_daily_remaining';
+   ```
+3. Identify what consumed the daily budget (large batch, loop bug, or unexpected load).
+4. For Phase 2 batch operations: split batches into smaller sub-batches with a 2-second pause between each, and schedule across multiple days if the volume exceeds safe daily limits.
+5. Daily limit resets at midnight UTC. Resume submissions after the reset is confirmed via `GET /api/xero/health`.
+
+#### Verification
+
+- `GET /api/xero/health` shows `rateLimitStatus.minuteRemaining > 10` and `dailyRemaining > 100`.
+- No new 429 responses appear in logs for 10 minutes.
+- Invoice submissions complete successfully end-to-end.
+
+#### Post-Mortem Triggers
+
+Open a post-mortem if the daily limit was exhausted. The daily limit of 4,500 requests is very large relative to the approximately 500 invoices per month this system processes, so exhaustion strongly indicates either a runaway loop or a batch processing error. Also open a post-mortem if the Prometheus alert `XeroDailyLimitApproaching` did not fire before exhaustion.
+
+---
+
+### INC-004: SQLite Database Corruption
+
+**Severity:** SEV-1
+**Risk Register Reference:** R-07 (HIGH risk — SQLite data loss or corruption)
+**SLO Impact:** SLO-001 (availability); complete system outage until restored
+
+#### Detection
+
+- Application logs contain: `SQLITE_CORRUPT`, `SQLITE_IOERR`, or `database disk image is malformed`.
+- All database-dependent routes return 500 errors.
+- Server fails to start or crashes immediately after startup.
+- `GET /api/xero/health` returns a database connectivity error.
+
+#### Diagnosis
+
+1. Stop the Next.js server immediately to prevent further writes to the corrupted file.
+2. Run an integrity check on the SQLite file:
+   ```bash
+   sqlite3 /path/to/invoice-system.db "PRAGMA integrity_check;"
+   ```
+   - Output of `ok` means the file is intact (the error may be transient or caused by something else).
+   - Any other output confirms corruption.
+3. Check whether orphaned WAL/SHM files from an unclean shutdown exist:
+   ```bash
+   ls -lh /path/to/invoice-system.db-wal
+   ls -lh /path/to/invoice-system.db-shm
+   ```
+   Attempt a WAL checkpoint recovery before restoring from backup:
+   ```bash
+   sqlite3 /path/to/invoice-system.db "PRAGMA wal_checkpoint(TRUNCATE);"
+   ```
+   If `PRAGMA integrity_check;` returns `ok` after this, the file may be recoverable without a restore.
+
+#### Fix
+
+**Case A: WAL checkpoint recovered the database**
+
+- Restart the server and confirm normal operation.
+- Run `PRAGMA integrity_check;` again after restart to re-validate.
+- Monitor closely for the next hour.
+
+**Case B: Confirmed corruption — restore from backup**
+
+1. Confirm the Next.js server is stopped.
+2. Rename the corrupted database file as evidence:
+   ```bash
+   mv /path/to/invoice-system.db /path/to/invoice-system.db.corrupted.$(date +%Y%m%d%H%M%S)
+   mv /path/to/invoice-system.db-wal /path/to/invoice-system.db-wal.bak 2>/dev/null
+   mv /path/to/invoice-system.db-shm /path/to/invoice-system.db-shm.bak 2>/dev/null
+   ```
+3. Copy the most recent daily backup to the active database path:
+   ```bash
+   cp /path/to/backups/invoice-system-YYYYMMDD.db /path/to/invoice-system.db
+   ```
+4. Run an integrity check on the restored file:
+   ```bash
+   sqlite3 /path/to/invoice-system.db "PRAGMA integrity_check;"
+   ```
+5. Restart the Next.js server.
+6. Identify any invoices created between the backup timestamp and the corruption event by cross-referencing the Xero dashboard. Re-record missing entries in `created_invoices` manually if audit trail completeness is required.
+
+**Case C: No valid backup available**
+
+1. Re-create the schema and re-import from the original source CSV files:
+   ```bash
    npm run db:migrate
+   npm run db:seed
+   ```
+2. Xero itself holds all submitted invoices as the authoritative source of truth. No invoice submitted to Xero before the corruption event is permanently lost.
+3. The `xero_tokens` table will be empty after a fresh schema creation; proceed to INC-002 (re-authorization) after the database is restored.
+4. The `created_invoices` audit log will be incomplete; cross-reference with Xero exports to reconstruct records as needed.
 
-2. 履歴データを再インポート
-   npm run db:seed  # 元CSVからの再インポート
+#### Verification
 
-3. Xero再認証
-   ブラウザで http://localhost:3000 → 「Connect to Xero」
+- `sqlite3 /path/to/invoice-system.db "PRAGMA integrity_check;"` returns `ok`.
+- `GET /api/xero/health` returns database connectivity as healthy.
+- Submit a test invoice end-to-end and confirm it appears in both `created_invoices` and Xero as a DRAFT.
 
-4. キャッシュ同期
-   「データ同期」ボタンを押下
+#### Post-Mortem Triggers
 
-※ created_invoicesテーブルのログは失われるが、インボイス自体はXero側に存在する
-```
-
-#### 予防策
-- SQLite WALモードを有効化（`PRAGMA journal_mode=WAL;`）
-- 日次バックアップを設定（R-07の緩和策）
-- ディスク空き容量を監視
+Always open a post-mortem. Investigate:
+- Whether WAL mode was properly enabled at the time of corruption.
+- Whether the daily backup process ran successfully before the corruption event.
+- Whether the backup file was older than 25 hours (a stale backup alert should have fired in advance).
 
 ---
 
-### 2.5 誤ったインボイス作成（リスク R-11）
+### INC-005: Fuzzy Match Returns Wrong Suggestions
 
-**重大度**: SEV3（DRAFT状態） / SEV2（AUTHORISEDに変更後に発覚）
-**検知方法**: ユーザー/会計担当者からの報告
+**Severity:** SEV-3
+**Risk Register Reference:** R-06 (HIGH risk — poor fuzzy match quality)
+**SLO Impact:** No direct SLO violation; impacts user trust and increases the correction burden on staff
 
-#### 症状
-- 間違ったContactNameに対してインボイスが作成された
-- 金額が間違っている
-- AccountCodeやTrackingOptionが不正確
+#### Detection
 
-#### 対応手順
+- Staff reports that the auto-fill populated an incorrect contact name, account code, or tracking category.
+- During Phase 1 staff feedback collection, the correction rate for a specific field exceeds acceptable levels.
+- Fuse.js match score logs show low-confidence scores (below the configured threshold) being accepted and surfaced to the user.
 
+#### Diagnosis
+
+1. Collect the specific input value that triggered the wrong suggestion from the staff report (for example, the Description text that was entered).
+2. Review `invoice_history` for entries matching that description:
+   ```sql
+   SELECT description, contact_name, account_code, count(*) AS frequency
+   FROM invoice_history
+   WHERE description LIKE '%[reported text]%'
+   GROUP BY description, contact_name, account_code
+   ORDER BY frequency DESC
+   LIMIT 10;
+   ```
+3. Check the Fuse.js configuration (typically in `lib/autocomplete/fuse-config.ts` or equivalent) for current field weights and the threshold value.
+4. Determine whether the issue is:
+   - **Data quality:** `invoice_history` contains conflicting or noisy records for this description pattern.
+   - **Weight misconfiguration:** A lower-priority field is weighted higher than a higher-priority field.
+   - **Threshold too permissive:** Low-confidence matches are being returned to users rather than showing no suggestion.
+
+#### Fix
+
+**Case A: Data quality issue in invoice_history**
+
+1. Identify and correct the problematic records:
+   ```sql
+   -- Review problematic records
+   SELECT id, description, contact_name, account_code
+   FROM invoice_history
+   WHERE description LIKE '%[problematic pattern]%';
+
+   -- Correct records as appropriate
+   UPDATE invoice_history SET contact_name = '[correct name]' WHERE id = [id];
+   ```
+2. Restart or invalidate the Fuse.js index cache to reflect the updated data.
+
+**Case B: Fuse.js weight adjustment needed**
+
+1. Update field weights in the Fuse.js configuration. Recommended starting adjustments based on the 18,860-record training set:
+   - `ContactName`: weight 0.4
+   - `Description`: weight 0.3
+   - `AccountCode`: weight 0.2
+   - `TrackingCategory`: weight 0.1
+2. Raise the minimum acceptable score threshold (lower Fuse.js threshold value means stricter matching; for example, `threshold: 0.3`).
+3. Test the new configuration against the reported input before deploying to confirm the correct result is returned.
+
+**Case C: Threshold too permissive**
+
+Raise the minimum score required before a suggestion is surfaced to the user. Prefer showing "No suggestion found" over a low-confidence suggestion that staff may accept without scrutiny.
+
+#### Verification
+
+- Re-test the specific input that triggered the wrong suggestion and confirm the correct result is returned.
+- Run the Phase 1 staff feedback session to collect broader accuracy data across a larger sample.
+- Monitor the correction rate for the affected field over the following week.
+
+#### Post-Mortem Triggers
+
+Open a post-mortem if the wrong suggestion led to a wrong invoice type being created (see INC-008), or if the data quality issue affected more than 10% of invoice submissions in a single week.
+
+---
+
+### INC-006: Auth.js Session Issues (Repeated Login Redirects)
+
+**Severity:** SEV-2
+**Risk Register Reference:** R-13 (HIGH risk — Auth.js v5 compatibility with custom Xero OIDC provider)
+**SLO Impact:** SLO-001 (availability) — users cannot access the system
+
+#### Detection
+
+- Users report being repeatedly redirected to the login page despite completing the login flow.
+- Application logs show repeated session creation attempts or JWT callback errors.
+- `NEXTAUTH_SECRET` environment variable error appears in server startup logs.
+- Session cookies are not being set or are being rejected by the browser.
+
+#### Diagnosis
+
+1. Check server startup logs for any Auth.js initialization errors related to `NEXTAUTH_SECRET` or the Xero OIDC provider configuration.
+2. Verify the `NEXTAUTH_SECRET` environment variable is set and non-empty in `.env.local`.
+3. Check browser developer tools under Application > Cookies for the presence of `next-auth.session-token` or `__Secure-next-auth.session-token`. If absent after a successful login, the cookie is not being set.
+4. Verify cookie configuration in `auth.ts`:
+   - `secure: true` requires HTTPS. On `localhost`, this must be `false` or left unset.
+   - `sameSite` settings must be compatible with the application URL.
+5. Check Auth.js JWT callback logs for token refresh failures. A failed Xero token refresh inside the JWT callback causes Auth.js to invalidate the session and redirect to login.
+6. Confirm the Xero OIDC discovery document is reachable:
+   ```
+   GET https://identity.xero.com/.well-known/openid-configuration
+   ```
+
+#### Fix
+
+**Case A: Missing or invalid NEXTAUTH_SECRET**
+
+1. Generate a new secret:
+   ```bash
+   openssl rand -base64 32
+   ```
+2. Set it in `.env.local`:
+   ```
+   NEXTAUTH_SECRET=<generated value>
+   ```
+3. Restart the Next.js server. All existing sessions will be invalidated; users will need to log in once.
+
+**Case B: Cookie settings incompatible with localhost**
+
+Update `auth.ts` to ensure `secure` is not set to `true` for the localhost HTTP environment. The `__Secure-` cookie prefix requires HTTPS and will cause the cookie to be silently dropped on HTTP origins.
+
+**Case C: JWT callback failing due to Xero token refresh error**
+
+The Auth.js JWT callback calls the Xero token refresh endpoint on each session validation. If the refresh token is expired, Auth.js will invalidate the session and redirect to login on every request. Proceed to INC-002 to re-authorize the Xero connection.
+
+**Case D: Xero OIDC discovery endpoint unreachable**
+
+Check network connectivity to `https://identity.xero.com`. If Xero's identity service is experiencing an outage, Auth.js cannot validate sessions. Consult `https://status.xero.com` for active platform incidents. This is an external dependency failure; no internal fix is possible.
+
+#### Verification
+
+- A user can log in and remain on the application without being redirected.
+- `GET /api/xero/health` returns a successful response (requires an active session).
+- The session cookie (`next-auth.session-token`) is present in browser developer tools after login.
+
+#### Post-Mortem Triggers
+
+Open a post-mortem if all users were locked out simultaneously, or if the root cause was a configuration regression introduced by a deployment (for example, `.env.local` being overwritten or a missing environment variable in a redeploy).
+
+---
+
+### INC-007: xero-node SDK Build Failure
+
+**Severity:** SEV-3
+**Risk Register Reference:** R-12 (MEDIUM risk — xero-node webpack conflict in Next.js build)
+**SLO Impact:** Prevents deployment; no runtime SLO impact if caught before the build reaches production
+
+#### Detection
+
+- `npm run build` fails with webpack module resolution errors.
+- Error messages reference `xero-node`, `better-sqlite3`, native Node.js modules, or `__dirname` in a client-side bundle.
+- Common error message examples:
+  - `Module not found: Can't resolve 'fs'`
+  - `Module not found: Can't resolve 'node:crypto'`
+  - `Critical dependency: the request of a dependency is an expression`
+
+#### Diagnosis
+
+1. Review the full build error output for the specific module that failed to resolve.
+2. Confirm whether the failure originated in a Server Component, a Client Component, or a shared utility file.
+3. Verify `next.config.ts` contains the correct `serverExternalPackages` configuration:
+   ```typescript
+   // next.config.ts
+   const nextConfig = {
+     serverExternalPackages: ['xero-node', 'better-sqlite3'],
+   };
+   ```
+4. Check whether a recent change introduced an import of `xero-node` or `better-sqlite3` in a Client Component or a shared file that is imported by a Client Component.
+5. Check whether a recent SDK version update changed the package's internal module structure in a way that bypasses the `serverExternalPackages` exclusion.
+
+#### Fix
+
+**Case A: serverExternalPackages missing or incomplete**
+
+Add the missing package names to `serverExternalPackages` in `next.config.ts` and re-run the build.
+
+**Case B: xero-node imported in a client component or shared file**
+
+Move all `xero-node` imports to server-only files (`lib/xero/xero-service.ts`, API route handlers, Server Actions). Never import `xero-node` in a component file or any file that lacks a `'use server'` directive.
+
+Add a `server-only` import guard at the top of the file as an additional safeguard:
+```typescript
+import 'server-only';
 ```
-【30秒以内に気づいた場合（Undo機能がある場合）】
-1. 送信完了画面で「取り消し」ボタンをクリック
-2. DRAFTインボイスがXeroでVOIDED状態になる
-3. 正しい内容で再入力・再送信
 
-【DRAFT状態のインボイスの修正】
-1. 送信完了画面に表示されたXeroリンクをクリック
-   または Xero管理画面 → Business → Invoices → Draft
-2. 該当インボイスを開く
-3. 方法A: Xero上で直接修正して保存
-4. 方法B: Xero上でインボイスを削除（DRAFTはDelete可能）し、本システムで再入力
+**Case C: xero-node SDK update broke webpack compatibility**
 
-【AUTHORISED状態に変更されてしまった場合】
-1. SH-002（会計担当者）に連絡
-2. Xero管理画面でインボイスをVOIDにする
-3. 正しい内容で新しいインボイスを作成
-4. ※ 顧客に既に送信済みの場合は、クレジットノートの発行が必要（Out of Scope - 手動対応）
+1. Revert to the last known working version:
+   ```bash
+   npm install xero-node@<last-known-good-version>
+   ```
+2. Confirm the build succeeds before redeploying.
+3. File a bug report against the `XeroAPI/xero-node` GitHub repository; this follows the known issue #543 pattern.
+4. If the SDK becomes unmaintained or the issue cannot be resolved, migrate `lib/xero/xero-service.ts` to direct `fetch` REST calls against the Xero API. All Xero interactions are isolated in that single file. Estimated migration effort: 3-5 days (see R-04 contingency in the risk register).
 
-【監査ログの確認】
-sqlite3 data/invoice.db \
-  "SELECT invoice_id, invoice_number, contact_name, total, created_at
+#### Verification
+
+- `npm run build` completes without errors.
+- `npm run start` launches the server successfully.
+- Submit a test invoice to confirm runtime functionality is intact after the build fix.
+
+#### Post-Mortem Triggers
+
+Open a post-mortem if a broken build was deployed to the running server (indicating the build step was skipped or not gated before deployment), or if the xero-node SDK version was updated without first verifying a successful build.
+
+---
+
+### INC-008: Invoice Created as Wrong Type (DEBIT NOTE vs INVOICE)
+
+**Severity:** SEV-3
+**Risk Register Reference:** R-11 (HIGH risk — staff creates wrong invoices) / R-06 (fuzzy match quality)
+**SLO Impact:** No direct SLO violation; creates incorrect financial records in Xero
+
+#### Detection
+
+- Staff reports that a DEBIT NOTE was created when an INVOICE was intended, or vice versa.
+- Querying `created_invoices` shows `invoice_type = 'ACCRECCREDIT'` where `'ACCREC'` was expected (or the reverse).
+- Staff locates the wrong document type in Xero's DRAFT invoices list.
+
+#### Diagnosis
+
+1. Retrieve the affected record from `created_invoices`:
+   ```sql
+   SELECT id, invoice_number, invoice_type, contact_name, reference, created_at
    FROM created_invoices
-   ORDER BY created_at DESC LIMIT 10;"
-```
+   WHERE invoice_number = '[reported invoice number]';
+   ```
+2. Note the Reference field value used for this submission.
+3. Review the Reference-to-type mapping logic in the codebase (likely in `lib/xero/invoice-builder.ts` or equivalent). Determine whether:
+   - The mapping rule incorrectly classified this Reference pattern as a DEBIT NOTE.
+   - The historical pattern in `invoice_history` contains conflicting type records for this Reference pattern.
+4. Check `invoice_history` for the Reference pattern:
+   ```sql
+   SELECT reference, invoice_type, count(*) AS frequency
+   FROM invoice_history
+   WHERE reference LIKE '%[reference pattern]%'
+   GROUP BY reference, invoice_type
+   ORDER BY frequency DESC;
+   ```
+   Conflicting rows for the same Reference pattern will cause inconsistent fuzzy match results.
 
-#### 予防策
-- プレビュー画面で全フィールドを確認してから送信（REQ-011）
-- DRAFTステータスでの作成を維持（REQ-013, ADR-004）
-- 会計担当者がXero上で最終確認してからAUTHORISE（SH-002の役割）
+#### Fix
+
+**Immediate: Void the incorrect DRAFT invoice in Xero**
+
+Since all invoices are created as DRAFT status, no invoice has been sent to a client at the point of detection. The incorrect draft can be voided in Xero:
+1. Open the Xero dashboard and locate the incorrect DRAFT invoice.
+2. Change its status to VOIDED (or Delete if it remains in DRAFT).
+3. Re-create the correct invoice type through the application, with the correct type explicitly confirmed by staff in the preview form before submission.
+
+If the 30-second undo window is implemented, staff can click "Undo" immediately after submission to void the draft without accessing Xero directly.
+
+**Fix the root cause:**
+
+- If the mapping logic contains an incorrect rule: update the Reference-to-type classification rules and redeploy.
+- If `invoice_history` data is ambiguous: clean up conflicting records (see INC-005, Case A) to establish a consistent historical pattern.
+- If staff repeatedly selects the wrong type: add an explicit type confirmation step to the invoice preview form so staff must actively confirm INVOICE vs DEBIT NOTE before the form allows submission.
+
+#### Verification
+
+- Re-submit the same invoice data and confirm the correct Xero type (`ACCREC` or `ACCRECCREDIT`) appears in Xero as a DRAFT.
+- Confirm the previously incorrect DRAFT is in VOIDED status in Xero.
+- Review `invoice_history` for the affected Reference pattern to confirm data quality is now consistent.
+
+#### Post-Mortem Triggers
+
+Open a post-mortem if more than one invoice was affected before detection, if the incorrect type was AUTHORIZED in Xero (not DRAFT, indicating a workflow change outside this system), or if the root cause is a systematic mapping rule error affecting an entire class of invoices.
 
 ---
 
-### 2.6 トークンリフレッシュMutexデッドロック
+## 3. Rollback Procedures
 
-**重大度**: SEV2
-**検知方法**: 自動補完・インボイス作成が無限待機状態になる / ブラウザタイムアウト
+### 3.1 Code Rollback
 
-#### 症状
-- ページが永遠にローディング状態
-- サーバーログに「Acquiring token refresh lock...」が出力されたまま完了ログがない
-- 複数のAPI呼び出しが同時にトークンリフレッシュを試行した形跡がある
-
-#### 診断手順
+Use when a recent deployment introduced a regression such as a build failure, broken feature, or incorrect behavior.
 
 ```bash
-# 1. Node.jsプロセスの状態確認
-# Windowsの場合
-tasklist | grep node
+# Identify the last known good commit
+git log --oneline -10
 
-# 2. サーバーログの確認（最新のmutex関連ログ）
-# ターミナル出力で "mutex" "lock" "refresh" を確認
+# Revert the bad commit (creates a new commit, preserves history)
+git revert <commit-hash>
 
-# 3. アクティブなリクエストの確認
-curl -s http://localhost:3000/api/xero/health
-# タイムアウトするならデッドロックの可能性が高い
+# Or revert the most recent commit only
+git revert HEAD
+
+# Rebuild and restart
+npm run build
+npm run start
 ```
 
-#### 復旧手順
+Verify after rollback:
+- `npm run build` completes without errors.
+- `GET /api/xero/health` returns all systems healthy.
+- Submit a test invoice to confirm end-to-end functionality.
 
-```
-【即時復旧】
-1. Next.js開発サーバーを再起動
-   Ctrl+C で停止
-   npm run dev
+### 3.2 Database Rollback
 
-2. ブラウザのページをリロード
-3. 動作確認: http://localhost:3000 でプレビューを実行
-
-【根本原因の調査】
-1. デッドロック発生時のサーバーログを保存
-2. 以下を確認:
-   - Mutexのタイムアウト設定が適切か（推奨: 10秒）
-   - リフレッシュ処理内で例外が発生し、ロック解放が漏れていないか
-   - try/finallyでロック解放が保証されているか
-
-【コード修正が必要な場合】
-- TokenManagerのmutex実装にタイムアウトを追加
-- finally句でのロック解放を保証
-- デッドロック検知ロジック（N秒後に強制解放）を追加
-```
-
-#### 予防策
-- Mutexにタイムアウトを設定（10秒推奨）
-- `try/finally` パターンでロック解放を保証
-- REQ-002 EH-004: 同時リフレッシュは1つのみ実行、他は待機
-
----
-
-## 3. ロールバック手順
-
-### 3.1 DRAFTインボイスのロールバック
-
-DRAFTステータスのインボイスはXero管理画面から**削除可能**（ADR-004の設計意図）。
-
-```
-【単一インボイスの削除】
-1. Xero管理画面にログイン
-2. Business → Invoices → Draft
-3. 該当インボイスを選択
-4. 「Delete」ボタンをクリック
-5. ローカルDBのログを更新（任意）:
-   sqlite3 data/invoice.db \
-     "UPDATE created_invoices SET status='DELETED' WHERE invoice_number='JJB26-XXXX';"
-
-【複数インボイスの一括削除】
-1. Xero管理画面 → Business → Invoices → Draft
-2. チェックボックスで複数選択
-3. 「Delete」をクリック
-```
-
-### 3.2 アプリケーションのロールバック
+Use when SQLite corruption is confirmed (see INC-004) or when a data migration script introduced incorrect data.
 
 ```bash
-# 直前のバージョンに戻す（Gitを使用している場合）
-git log --oneline -5
-git checkout <previous-commit-hash>
-npm install
-npm run dev
+# Step 1: Stop the server
 
-# 環境変数は .env.local に保持されているため変更不要
+# Step 2: Verify backup integrity before restoring
+sqlite3 /path/to/backups/invoice-system-YYYYMMDD.db "PRAGMA integrity_check;"
+
+# Step 3: Preserve the current (corrupt or bad) database as evidence
+mv /path/to/invoice-system.db /path/to/invoice-system.db.pre-rollback.$(date +%Y%m%d%H%M%S)
+
+# Step 4: Restore from backup
+cp /path/to/backups/invoice-system-YYYYMMDD.db /path/to/invoice-system.db
+
+# Step 5: Validate the restored database
+sqlite3 /path/to/invoice-system.db "PRAGMA integrity_check;"
+sqlite3 /path/to/invoice-system.db "SELECT count(*) FROM invoice_history;"
+sqlite3 /path/to/invoice-system.db "SELECT count(*) FROM created_invoices;"
+
+# Step 6: Restart the server
+npm run start
 ```
 
-### 3.3 データベースのロールバック
+Important notes:
+- Any invoices created between the backup timestamp and the rollback will not appear in the local `created_invoices` table. Cross-reference with Xero to identify and manually re-record these if audit trail completeness is required.
+- Xero is the authoritative record for all submitted invoices. The local SQLite database is the audit log and history cache. No invoice submitted to Xero before the corruption event is permanently lost.
+
+### 3.3 Token Rollback (Re-Authorization)
+
+Use when the `xero_tokens` table contains corrupt data, stale data from a previous tenant, or when a database rollback removed valid tokens.
+
+```sql
+-- Clear all token records
+DELETE FROM xero_tokens;
+```
+
+After clearing tokens:
+1. Navigate to `http://localhost:3000/login`.
+2. Click "Connect to Xero" and complete the OAuth2 authorization flow.
+3. Verify `GET /api/xero/health` returns `tokenStatus: "active"`.
+
+Note: Clearing the tokens table does not affect `invoice_history`, `created_invoices`, or any other application data. Invoice history and the Fuse.js cache remain intact.
+
+---
+
+## 4. Health Check Procedures
+
+### 4.1 Automated Health Endpoint
+
+```
+GET http://localhost:3000/api/xero/health
+```
+
+Expected response for a fully healthy system:
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-03-10T09:00:00.000Z",
+  "tokenStatus": "active",
+  "canRefresh": true,
+  "tokenExpiresIn": 1620,
+  "refreshTokenExpiresIn": 5184000,
+  "rateLimitStatus": {
+    "minuteRemaining": 48,
+    "dailyRemaining": 4487
+  },
+  "database": "connected",
+  "pendingInvoices": 0
+}
+```
+
+Key fields and their alert thresholds:
+
+| Field | Healthy Value | Action Required |
+|-------|--------------|-----------------|
+| `tokenStatus` | `"active"` | If `"expired"`: attempt refresh; if `canRefresh: false`, proceed to INC-002 |
+| `canRefresh` | `true` | If `false`: refresh token expired; re-authorization required (INC-002) |
+| `refreshTokenExpiresIn` | > 1,209,600 seconds (14 days) | If below: alert admin to schedule re-authorization before expiry |
+| `rateLimitStatus.minuteRemaining` | >= 10 | If below: investigate for runaway requests (INC-003) |
+| `rateLimitStatus.dailyRemaining` | >= 500 | If below: trigger `XeroDailyLimitApproaching` response (INC-003) |
+| `database` | `"connected"` | If error: check SQLite integrity (INC-004) |
+| `pendingInvoices` | 0 | If > 0 for more than 30 minutes: investigate stuck PENDING_XERO rows |
+
+### 4.2 Manual SQLite Integrity Check
+
+Run after any unclean server shutdown or as part of incident diagnosis:
 
 ```bash
-# バックアップから復元
-cp data/backups/invoice-system-YYYYMMDD.db data/invoice.db
-# アプリケーション再起動
+# Full integrity check
+sqlite3 /path/to/invoice-system.db "PRAGMA integrity_check;"
+# Expected output: ok
+
+# Flush WAL to main database file
+sqlite3 /path/to/invoice-system.db "PRAGMA wal_checkpoint(PASSIVE);"
+
+# Verify row counts are plausible
+sqlite3 /path/to/invoice-system.db "SELECT count(*) FROM invoice_history;"
+sqlite3 /path/to/invoice-system.db "SELECT count(*) FROM created_invoices;"
+sqlite3 /path/to/invoice-system.db "SELECT count(*) FROM xero_tokens;"
 ```
 
+### 4.3 Manual Xero API Connectivity Check
+
+Verify that Xero's API is reachable and that the current token is accepted:
+
+```
+GET /api/xero/health
+```
+
+If the health endpoint reports Xero connectivity errors but `tokenStatus` is `"active"`, check `https://status.xero.com` for active Xero platform incidents before investigating local configuration.
+
+### 4.4 Pending Invoice Check
+
+Identify invoices that were submitted locally but not confirmed by Xero:
+
+```sql
+SELECT id, invoice_number, contact_name, created_at, status
+FROM created_invoices
+WHERE status = 'PENDING_XERO'
+ORDER BY created_at ASC;
+```
+
+Any row in `PENDING_XERO` status for more than 30 minutes requires investigation. The Xero submission either failed silently or the network call timed out without updating the local status. Cross-reference with the Xero dashboard to determine whether the invoice was actually created on the Xero side.
+
 ---
 
-## 3. 追加インシデントシナリオ
+## 5. Escalation Matrix
+
+| Level | Contact | Role | When to Escalate |
+|-------|---------|------|-----------------|
+| L1 | SH-003 (Developer) | System administrator and primary on-call | All incidents — first contact for any SEV-1 through SEV-4 |
+| L2 | Xero Developer Support (`developer.xero.com/support`) | Xero platform support | When the root cause is confirmed to be a Xero API bug, unexpected API behavior, OAuth infrastructure outage, or xero-node SDK defect that cannot be resolved internally |
+| L3 | Management (SH-002) | Business stakeholder | Data loss confirmed or unrecoverable, extended outage beyond 4 hours during business hours (9:00-18:00 MYT), SLO error budget at 100%+ (RED status), or incorrect invoices that have reached clients in Xero |
+
+### Escalation Notes
+
+**Xero platform outages:** Check `https://status.xero.com` before escalating to L2. If Xero confirms an active platform incident, the cause is an external dependency failure. Document the incident start time and wait for Xero resolution; no internal fix is possible.
+
+**Bus factor (R-16):** All architecture decisions, token handling logic, Fuse.js weight rationale, and incident learnings are documented in `architecture_final.md`, `implementation_plan.md`, this runbook, and the risk register. If SH-003 is unavailable, a second developer can be onboarded using these documents without requiring tribal knowledge transfer.
+
+**Wrong invoice escalation threshold:** Since all invoices are created as DRAFT in Xero, no invoice is sent to a client without manual authorization in Xero by the accounts team. This provides a review window before any client-facing financial impact. L3 escalation is only required if an incorrect DRAFT was AUTHORIZED in Xero and dispatched to a client.
 
 ---
 
-### 3.1 自動補完レイテンシ劣化（SLO-003 / SLO-004）
+## 6. Maintenance Procedures
 
-**重大度**: SEV3
-**検知方法**: アラート `HighP95Latency`（P95 > 500ms）/ `HighP99Latency`（P99 > 1s）
+### 6.1 Daily
 
-#### 症状
-- 自動補完の応答が遅い（入力後に候補が表示されるまで数秒かかる）
-- ブラウザのネットワークタブで fuzzyMatchAction のレスポンスが 500ms 以上
+| Task | Method | Alert Condition |
+|------|--------|----------------|
+| SQLite backup | Copy database file to backup location (network share or cloud folder) | Backup file older than 25 hours |
+| Check pending invoices | `GET /api/xero/health` and inspect `pendingInvoices` field | Any `created_invoices` row with `status = PENDING_XERO` for more than 30 minutes |
+| Xero daily API counter review | Review via health endpoint or Prometheus dashboard | `X-DayLimit-Remaining` below 500 triggers `XeroDailyLimitApproaching` warning |
 
-#### 診断手順
+**Daily backup command:**
 
 ```bash
-# 1. Node.js プロセスのメモリ使用量を確認
-# Windows PowerShell:
-Get-Process -Name node | Select-Object WorkingSet64, Id
+# Copy with date-stamped filename
+cp /path/to/invoice-system.db /path/to/backups/invoice-system-$(date +%Y%m%d).db
 
-# 2. Fuse.js インデックスサイズ確認（invoice_history の行数）
-sqlite3 data/invoice.db "SELECT COUNT(*) FROM invoice_history;"
+# Retain last 30 days; remove older backups
+find /path/to/backups -name "invoice-system-*.db" -mtime +30 -delete
 
-# 3. キャッシュ状態確認（TTL切れの場合、再構築中に遅延が発生）
-# GET /api/xero/health でlastSyncAt を確認
-
-# 4. SQLite のパフォーマンス確認
-sqlite3 data/invoice.db "PRAGMA integrity_check;"
-sqlite3 data/invoice.db "PRAGMA wal_checkpoint(TRUNCATE);"
+# Verify the backup integrity
+sqlite3 /path/to/backups/invoice-system-$(date +%Y%m%d).db "PRAGMA integrity_check;"
 ```
 
-#### 復旧手順
+### 6.2 Weekly
 
-1. **キャッシュ再構築**: アプリケーションを再起動し、instrumentation.ts のウォームアップを再実行
-2. **WAL ファイル肥大化**: `PRAGMA wal_checkpoint(TRUNCATE)` で WAL をリセット
-3. **メモリ不足**: Node.js の `--max-old-space-size` を増やす（デフォルト: 512MB → 1024MB）
-4. **invoice_history 肥大化**: 古い重複レコードを整理（occurrence_count でマージ）
+| Task | Method | Alert Condition |
+|------|--------|----------------|
+| Token health check | Call `GET /api/xero/health` via cron job | `refreshTokenExpiresIn` below 1,209,600 seconds (14 days) triggers `XeroTokenExpiringSoon` warning |
+| Review error logs | Search application logs for ERROR-level entries | Any new error pattern not seen in the previous week warrants investigation |
+| Next.js security advisories | Check GitHub security feed for `nextjs/next.js` | Any critical CVE affecting Next.js >= 15.2.3 requires immediate patch review (R-09) |
+| xero-node release notes | Check `XeroAPI/xero-node` GitHub releases | Breaking changes or security patches require build testing before scheduling an upgrade |
 
----
+**Weekly token health cron example:**
 
-### 3.2 エラーバジェット枯渇
-
-**重大度**: SEV2（80%消費）/ SEV1（100%消費）
-**検知方法**: アラート `ErrorBudgetConsumed80Pct` / `ErrorBudgetConsumed50Pct`
-
-#### アクション
-
-| 消費率 | アクション |
-|--------|----------|
-| 50% (WARNING) | 開発者に通知。信頼性改善タスクを次スプリントに追加 |
-| 80% (CRITICAL) | 新機能開発を一時停止。信頼性改善に集中 |
-| 100% (EMERGENCY) | 全開発を停止。インシデント対応と根本原因分析を実施。ポストモーテムを開催 |
-
-#### 復旧手順
-
-1. エラーバジェット消費の主要因を特定（可用性？レイテンシ？API エラー？）
-2. 該当する個別インシデントの Runbook を実行
-3. ポストモーテムで再発防止策を決定
-4. 30 日ローリングウィンドウでバジェットが回復するまで機能開発を凍結
-
----
-
-## 4. ポストモーテムテンプレート
-
-### インシデントポストモーテム
-
-```markdown
-# ポストモーテム: [インシデントタイトル]
-
-**日時**: YYYY-MM-DD HH:MM - HH:MM MYT
-**重大度**: SEV-X
-**担当者**: [名前]
-**ステータス**: [調査中 / 完了]
-
----
-
-## タイムライン
-
-| 時刻 (MYT) | イベント |
-|------------|---------|
-| HH:MM | [検知方法]: [何が起きたか] |
-| HH:MM | [最初のアクション] |
-| HH:MM | [根本原因の特定] |
-| HH:MM | [復旧アクション] |
-| HH:MM | [復旧確認] |
-
----
-
-## 影響範囲
-
-- **影響を受けたユーザー数**: X人
-- **影響を受けたインボイス数**: X件
-- **ダウンタイム**: X分
-- **SLOへの影響**: [エラーバジェット消費量]
-
----
-
-## 5-Whys 分析
-
-1. **Why**: なぜインシデントが発生したか？
-   → [直接原因]
-
-2. **Why**: なぜ[直接原因]が起きたか？
-   → [原因の原因]
-
-3. **Why**: なぜ[原因の原因]が起きたか？
-   → [さらに深い原因]
-
-4. **Why**: なぜ[さらに深い原因]が起きたか？
-   → [根本原因に近づく]
-
-5. **Why**: なぜ[根本原因に近づく]が起きたか？
-   → **根本原因**: [Root Cause]
-
----
-
-## 根本原因
-
-[根本原因の詳細な説明]
-
----
-
-## 教訓
-
-### うまくいったこと
-- [例: アラートが即座に発火し、検知が早かった]
-
-### うまくいかなかったこと
-- [例: Runbookの手順が古く、実際の環境と異なっていた]
-
----
-
-## アクションアイテム
-
-| # | アクション | 担当 | 期限 | ステータス |
-|---|----------|------|------|----------|
-| 1 | [再発防止策] | [名前] | YYYY-MM-DD | [ ] |
-| 2 | [検知改善] | [名前] | YYYY-MM-DD | [ ] |
-| 3 | [Runbook更新] | [名前] | YYYY-MM-DD | [ ] |
+```bash
+# crontab entry — every Monday at 08:00 MYT (00:00 UTC)
+0 0 * * 1 curl -sf http://localhost:3000/api/xero/health >> /var/log/xero-health-weekly.log 2>&1
 ```
 
----
+### 6.3 Monthly
 
-## 5. オンコール連絡先
-
-| 役割 | 担当者 | 連絡方法 | 対応時間 |
-|------|--------|---------|---------|
-| システム管理者（SH-003） | [名前] | [社内チャット / 電話番号] | 営業時間 9:00-18:00 MYT |
-| 会計担当者（SH-002） | [名前] | [社内チャット / 電話番号] | 営業時間 9:00-18:00 MYT |
-| 開発者 | [名前] | [社内チャット / メール] | 営業時間 + 緊急時は時間外 |
-
-### 連絡判断基準
-
-| 状況 | 連絡先 |
-|------|-------|
-| SEV1: システム完全停止 | 開発者 → SH-003 → SH-002 |
-| SEV2: コア機能障害 | 開発者 → SH-003 |
-| SEV3: 一部機能劣化 | 開発者（次営業日で可） |
-| SEV4: 軽微な問題 | 開発者（チケット起票） |
-| Xero側の障害 | SH-003（Xero管理画面で手動対応を案内） |
-| 誤ったインボイス作成 | SH-001 → SH-002（Xeroで修正/削除） |
+| Task | Method | Notes |
+|------|--------|-------|
+| Fuse.js match accuracy review | Analyze Phase 1 staff correction data; compare `invoice_history` suggestions vs actual submissions | Target: ContactName accuracy >= 90%, AccountCode accuracy >= 85% (per SLO dashboard spec). Re-weight fields if correction rate for any field is consistently high. |
+| xero-node SDK update (if patch available) | `npm update xero-node`, then `npm run build`, then end-to-end invoice submission test | Only update if a security or bug fix is relevant to this system. The April 2026 Employee endpoint deprecation does not affect this project. |
+| Risk register review | Cross-reference `research/risk_register.md` with observed system behavior and any incidents from the past month | Update probability and impact assessments. Escalate any newly HIGH risks to L3. |
+| Error budget review | Calculate 30-day rolling consumption across SLO-001 through SLO-006 | If any SLO is at ORANGE (80-100% budget consumed), pause new feature work and prioritize reliability improvements as defined in `slo.md` Section 3.2. |
+| Dependency audit | `npm audit` | Patch any HIGH or CRITICAL vulnerabilities before the next development sprint. |
 
 ---
 
-## 改訂履歴
+## Revision History
 
-| 日付 | バージョン | 変更内容 |
-|------|----------|---------|
-| 2026-03-10 | 1.0 | 初版作成 |
+| Date | Version | Author | Change Summary |
+|------|---------|--------|----------------|
+| 2026-03-10 | 1.0 | Developer (SH-003) | Initial version — Japanese language, covers OAuth, rate limit, API down, DB corruption, wrong invoice, mutex deadlock |
+| 2026-03-10 | 2.0 | Developer (SH-003) | Full rewrite — English, aligned with risk register R-01 through R-16, SLO error budget thresholds, structured INC-001 through INC-008 with Detection/Diagnosis/Fix/Verification/Post-Mortem sections, standardized severity matrix |
