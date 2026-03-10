@@ -1,0 +1,18 @@
+Category,Item,Monthly Cost (AUD),Monthly Cost (USD),Notes
+Xero API,Starter Tier,$0,$0,接続5件まで無料 / データ転送量無制限
+Xero API,Core Tier,$35,$23,接続50件 / 10GB/月 / 超過$2.40/GB
+Xero API,Plus Tier,$245,$160,接続1000件 / 50GB/月
+Xero API,Advanced Tier,"$1,445",$940,接続10000件 / 250GB/月
+Xero API,Enterprise Tier,Custom,Custom,要問合せ
+Hosting,Localhost Only,$0,$0,推奨構成 / ngrok等でOAuthコールバック対応
+Hosting,Vercel Hobby,$0,$0,無料枠 / SQLite非対応(Turso等が必要)
+Hosting,Vercel Pro,$0,$20,商用利用向け
+Hosting,VPS (fly.io等),$0,$5-10,SQLiteフル対応 / 永続ディスク
+Domain,なし（localhost）,$0,$0,ローカル運用のため不要
+SSL,なし（localhost）,$0,$0,ローカル運用のため不要
+npm Packages,All OSS packages,$0,$0,全て無料 (MIT/Apache-2.0/ISC)
+Database,SQLite,$0,$0,組み込みDB / ライセンスフリー
+,,,,
+TOTAL (Recommended),Localhost + Starter,$0,$0,個人利用・ローカル運用の推奨構成
+TOTAL (Cloud minimal),Vercel Hobby + Starter,$0,$0,Turso無料枠でSQLite代替が必要
+TOTAL (Cloud production),Vercel Pro + Core,$35,$43,本番運用・複数接続時

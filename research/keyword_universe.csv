@@ -1,0 +1,65 @@
+category,keyword,keyword_ja,relevance_score,competition,notes
+core,Xero API,Xero API,10,medium,システム基盤
+core,Invoice Automation,インボイス自動化,10,high,主要機能
+core,xero-node SDK,xero-node SDK,9,low,実装ライブラリ
+core,OAuth2 Authentication,OAuth2認証,8,medium,API認証
+core,Auto-complete Predictive Input,自動補完・予測入力,9,medium,UX中核機能
+core,Historical Data Learning,過去データ学習,8,low,知能化の核
+core,Property Management,不動産管理,7,high,ドメイン
+core,Repair List Digitization,修繕リスト電子化,8,low,入力ソース
+core,Accounting API Integration,会計API連携,8,medium,アーキテクチャ
+core,Invoice Field Mapping,インボイスフィールドマッピング,7,low,データ変換
+related,Next.js App Router,Next.js App Router,8,medium,フレームワーク
+related,TypeScript,TypeScript,7,high,型安全
+related,Prisma ORM,Prisma ORM,6,medium,DB操作
+related,NextAuth.js,NextAuth.js,7,medium,OAuth2セッション管理
+related,React Hook Form,React Hook Form,6,medium,フォーム管理
+related,Tailwind CSS,Tailwind CSS,5,high,UI
+related,Fuzzy Matching,ファジーマッチング,7,low,過去データ照合
+related,Token Refresh Flow,トークンリフレッシュ,7,low,OAuth2運用
+related,Rate Limiting,レート制限,6,low,API制約
+related,Webhook Polling,Webhook/ポーリング,5,medium,データ同期
+compound,Xero インボイス自動化,Xero インボイス自動化,10,low,直接ニーズ
+compound,Xero API 自動入力,Xero API 自動入力,9,low,実装方法
+compound,会計ソフト API連携,会計ソフト API連携,7,medium,広域検索
+compound,請求書 自動作成 API,請求書 自動作成 API,8,medium,機能検索
+compound,xero-node OAuth2 認証,xero-node OAuth2 認証,8,low,技術実装
+compound,Next.js 会計システム,Next.js 会計システム,6,low,スタック検索
+compound,修繕リスト インボイス変換,修繕リスト インボイス変換,9,very low,ドメイン特化
+compound,過去データ 予測入力,過去データ 予測入力,8,low,AI/ML機能
+compound,Property repair invoice automation,Property repair invoice automation,8,low,英語圏検索
+compound,Xero API bulk invoice creation,Xero API bulk invoice creation,7,low,バッチ処理
+compound,Xero tracking category API,Xero tracking category API,7,low,フィールド実装
+rising_2026,AI Accounting Agent,AI会計エージェント,9,medium,Akira AI/Docyt GARY台頭
+rising_2026,Xero Tiered API Pricing 2026,Xero段階別API料金2026,7,low,2026年3月新料金体系
+rising_2026,AP Automation AI,買掛金自動化AI,8,high,95%自動化予測
+rising_2026,Autonomous Finance Agent,自律型ファイナンスエージェント,8,medium,例外処理80%自動化
+rising_2026,e-Invoicing Mandate Compliance,電子インボイス義務化対応,7,medium,EU+日本制度
+rising_2026,Predictive Invoice Entry,予測型インボイス入力,9,low,ML学習による予測
+rising_2026,Xero Unified API,Xero統合API,6,low,Merge/Apideck経由
+rising_2026,OCR AI Invoice Extraction,OCR AIインボイス抽出,7,medium,Hubdoc進化
+niche,Xero API 修繕管理 インボイス,Xero API 修繕管理 インボイス,9,very low,不動産修繕×Xero
+niche,xero-node Next.js App Router,xero-node Next.js App Router,8,very low,webpack互換問題あり
+niche,5フィールド→フルインボイス自動補完,5フィールド→フルインボイス自動補完,9,very low,最小入力→最大出力UX
+niche,過去データ学習 Contact推定,過去データ学習 Contact推定,8,very low,取引先自動推定
+niche,Property repair Xero invoice pipeline,Property repair Xero invoice pipeline,8,very low,修繕→会計パイプライン
+niche,Tracking Category 自動割当,Tracking Category 自動割当,7,very low,管理タグ自動化
+niche,Unit No Account Code マッピング,Unit No Account Codeマッピング,7,very low,部屋番号→勘定科目
+niche,日本語Detail Xero Description変換,日本語Detail Xero Description変換,7,very low,多言語変換
+tech_stack,Next.js 14+ App Router,Next.js 14+ App Router,9,n/a,SSR + API Routes統合
+tech_stack,xero-node SDK,xero-node SDK,10,n/a,公式SDK（サーバーサイド専用）
+tech_stack,NextAuth.js v5,NextAuth.js v5,8,n/a,Xero OAuth2 provider
+tech_stack,PostgreSQL / Supabase,PostgreSQL / Supabase,7,n/a,過去データ・トークン保存
+tech_stack,Prisma,Prisma,7,n/a,型安全なDB操作
+tech_stack,Tailwind CSS + shadcn/ui,Tailwind CSS + shadcn/ui,6,n/a,高速UI構築
+tech_stack,React Hook Form + Zod,React Hook Form + Zod,7,n/a,バリデーション
+tech_stack,Fuse.js,Fuse.js,6,n/a,Fuzzy検索
+tech_stack,Vercel,Vercel,6,n/a,デプロイ
+tech_stack,Sentry,Sentry,5,n/a,エラー追跡
+mcp_skill,WebSearch,WebSearch,8,n/a,API仕様・トレンド調査
+mcp_skill,WebFetch,WebFetch,7,n/a,Xero Docs取得
+mcp_skill,Read / Edit,Read / Edit,9,n/a,コード実装・修正
+mcp_skill,Bash,Bash,9,n/a,プロジェクト構築・npm・Git
+mcp_skill,Glob / Grep,Glob / Grep,7,n/a,コードベース検索
+mcp_skill,mcp__ide__executeCode,mcp__ide__executeCode,6,n/a,コード実行テスト
+mcp_skill,mcp__ide__getDiagnostics,mcp__ide__getDiagnostics,6,n/a,型エラー検出

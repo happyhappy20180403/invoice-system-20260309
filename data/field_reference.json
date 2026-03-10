@@ -1,0 +1,366 @@
+{
+  "columns": {
+    "ContactName": {
+      "type": "string",
+      "description": "Tenant/client full name or property+owner format"
+    },
+    "EmailAddress": {
+      "type": "string",
+      "format": "email"
+    },
+    "POAddressLine1": {
+      "type": "string",
+      "description": "Postal/billing address line 1"
+    },
+    "POAddressLine2": {
+      "type": "string"
+    },
+    "POAddressLine3": {
+      "type": "string"
+    },
+    "POAddressLine4": {
+      "type": "string"
+    },
+    "POCity": {
+      "type": "string"
+    },
+    "PORegion": {
+      "type": "string"
+    },
+    "POPostalCode": {
+      "type": "string"
+    },
+    "POCountry": {
+      "type": "string"
+    },
+    "SAAddressLine1": {
+      "type": "string",
+      "description": "Property unit address (street/physical)"
+    },
+    "SAAddressLine2": {
+      "type": "string"
+    },
+    "SAAddressLine3": {
+      "type": "string"
+    },
+    "SAAddressLine4": {
+      "type": "string"
+    },
+    "SACity": {
+      "type": "string"
+    },
+    "SARegion": {
+      "type": "string"
+    },
+    "SAPostalCode": {
+      "type": "string"
+    },
+    "SACountry": {
+      "type": "string"
+    },
+    "InvoiceNumber": {
+      "type": "string",
+      "format": "JJB{YY}-{NNNN}"
+    },
+    "Reference": {
+      "type": "string",
+      "description": "Document type indicator"
+    },
+    "InvoiceDate": {
+      "type": "date",
+      "format": "D/MM/YYYY"
+    },
+    "DueDate": {
+      "type": "date",
+      "format": "D/MM/YYYY"
+    },
+    "PlannedDate": {
+      "type": "date",
+      "format": "D/MM/YYYY",
+      "description": "Often empty"
+    },
+    "Total": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "TaxTotal": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "InvoiceAmountPaid": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "InvoiceAmountDue": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "InventoryItemCode": {
+      "type": "string",
+      "description": "Usually empty"
+    },
+    "Description": {
+      "type": "string",
+      "description": "Line item description"
+    },
+    "Quantity": {
+      "type": "decimal",
+      "format": "N.0000"
+    },
+    "UnitAmount": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "Discount": {
+      "type": "decimal",
+      "description": "Usually empty"
+    },
+    "LineAmount": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "AccountCode": {
+      "type": "string",
+      "description": "Xero account code"
+    },
+    "TaxType": {
+      "type": "string",
+      "description": "Tax type"
+    },
+    "TaxAmount": {
+      "type": "decimal",
+      "format": "NNNN.0000"
+    },
+    "TrackingName1": {
+      "type": "string",
+      "fixed_value": "NATURE OF ACCOUNT"
+    },
+    "TrackingOption1": {
+      "type": "string",
+      "description": "Nature of account"
+    },
+    "TrackingName2": {
+      "type": "string",
+      "fixed_value": "Categories/Projects"
+    },
+    "TrackingOption2": {
+      "type": "string",
+      "description": "Project/property development name"
+    },
+    "Currency": {
+      "type": "string",
+      "fixed_value": "MYR"
+    },
+    "Type": {
+      "type": "string"
+    },
+    "Sent": {
+      "type": "string"
+    },
+    "Status": {
+      "type": "string"
+    }
+  },
+  "invoice_number_patterns": {
+    "JJB_standard": {
+      "format": "JJB{YY}-{NNNN}",
+      "example": "JJB23-1050, JJB24-0001",
+      "description": "Standard sales invoice. YY=2-digit year, NNNN=sequential number (no fixed width)",
+      "used_for": "Sales invoice, Sales credit note",
+      "year_ranges": {
+        "2022": {
+          "min": 4325,
+          "max": 4536,
+          "count": 78
+        },
+        "2023": {
+          "min": 1,
+          "max": 4929,
+          "count": 4197
+        },
+        "2024": {
+          "min": 1,
+          "max": 4873,
+          "count": 4811
+        },
+        "2025": {
+          "min": 1,
+          "max": 5068,
+          "count": 4972
+        },
+        "2026": {
+          "min": 5136,
+          "max": 5948,
+          "count": 508
+        }
+      },
+      "total_unique": 14566
+    },
+    "CN_YY": {
+      "format": "CN{YY}-{NNNN}",
+      "example": "CN23-0096",
+      "description": "Credit note with year prefix",
+      "total_unique": 33,
+      "range": "CN23-0096 to CN23-4208"
+    },
+    "CN_plain": {
+      "format": "CN-{NNNN}",
+      "example": "CN-4563",
+      "description": "Credit note without year prefix",
+      "total_unique": 10,
+      "range": "CN-4563 to CN-5846"
+    }
+  },
+  "reference_values": [
+    "CANCELLED",
+    "CREDIT NOTE",
+    "DEBIIT NOTE",
+    "DEBIT  NOTE",
+    "DEBIT NOTE",
+    "DEBIT NOTE | INVOICE",
+    "DEPOSIT",
+    "INVOCIE",
+    "INVOICE",
+    "JJB23V-05037",
+    "JJB25V-05132",
+    "JJB25V-09002",
+    "REFUND",
+    "REFUND CP500 YA2025",
+    "REFUND DEPOSIT",
+    "REFUND SECURITY & UTILITY DEPOSIT",
+    "Refund",
+    "SURPLUS",
+    "SURPLUS TRANSFER",
+    "TNG CARD EXTRA TOP UP",
+    "UNIT DEPOSIT",
+    "surplus",
+    "surplus from exchange rate",
+    "unit deposit"
+  ],
+  "reference_notes": {
+    "INVOICE": "Standard invoice",
+    "DEBIT NOTE": "Debit note (most common)",
+    "DEBIT  NOTE": "Typo variant - double space",
+    "DEBIIT NOTE": "Typo variant - double I",
+    "INVOCIE": "Typo variant of INVOICE",
+    "CREDIT NOTE": "Credit note",
+    "DEBIT NOTE | INVOICE": "Combined debit note and invoice",
+    "CANCELLED": "Cancelled document",
+    "DEPOSIT": "Deposit payment",
+    "UNIT DEPOSIT": "Unit security deposit",
+    "REFUND": "Refund",
+    "Refund": "Refund (mixed case variant)",
+    "REFUND DEPOSIT": "Refund of deposit",
+    "REFUND SECURITY & UTILITY DEPOSIT": "Full deposit refund",
+    "SURPLUS": "Surplus amount",
+    "surplus": "Surplus (lowercase variant)",
+    "SURPLUS TRANSFER": "Surplus transfer",
+    "surplus from exchange rate": "Surplus from FX",
+    "unit deposit": "Unit deposit (lowercase)",
+    "TNG CARD EXTRA TOP UP": "TNG card top-up",
+    "REFUND CP500 YA2025": "Tax refund",
+    "JJB23V-05037": "Reference to another invoice number",
+    "JJB25V-05132": "Reference to another invoice number",
+    "JJB25V-09002": "Reference to another invoice number"
+  },
+  "date_format": {
+    "format": "D/MM/YYYY",
+    "description": "Day can be 1 or 2 digits (no zero padding), month 2 digits, year 4 digits",
+    "examples": [
+      "1/01/2023",
+      "31/12/2025",
+      "15/06/2024",
+      "2/07/2024"
+    ]
+  },
+  "numeric_field_format": {
+    "description": "All numeric fields use 4 decimal places",
+    "format": "NNNN.0000",
+    "examples": [
+      "11700.0000",
+      "0.0000",
+      "1.0000",
+      "8400.0000"
+    ]
+  },
+  "tax_type_values": [
+    "Tax Exempt"
+  ],
+  "currency_values": [
+    "MYR"
+  ],
+  "type_values": [
+    "Sales credit note",
+    "Sales invoice",
+    "Sales overpayment"
+  ],
+  "type_notes": {
+    "Sales invoice": "Standard outgoing invoice",
+    "Sales credit note": "Credit note (negative/reversal)",
+    "Sales overpayment": "Overpayment record"
+  },
+  "sent_values": [
+    "Sent",
+    "Unsent",
+    "Viewed"
+  ],
+  "status_values": [
+    "Awaiting Payment",
+    "Paid"
+  ],
+  "contact_name_patterns": {
+    "property_owner_format": "{ProjectName} {UnitNumber} (O){OwnerName}",
+    "tenant_only_format": "{TenantFullName}",
+    "company_format": "{CompanyName}",
+    "examples": [
+      "V@Summerplace 31-15 (O)MATSUI MISO INTERNATIONAL PTE LTD",
+      "MP4 B1-21-01 (O)MASATAKA TSUKUDA",
+      "Imperia IM-13A-06 (O)TAMURA TETSURO",
+      "PONDEROSA GREEN NO. 39 (O)HARA NAOMI",
+      "KIDO KEISUKE"
+    ],
+    "note": "(O) prefix in parentheses before owner name is the separator between property and owner"
+  },
+  "total_files_analyzed": 38,
+  "total_rows_analyzed": 18860,
+  "per_file_row_counts": {
+    "202301.csv": 452,
+    "202302.csv": 464,
+    "202303.csv": 546,
+    "202304.csv": 505,
+    "202305.csv": 685,
+    "202306.csv": 450,
+    "202307.csv": 481,
+    "202308.csv": 474,
+    "202309.csv": 495,
+    "202310.csv": 455,
+    "202311.csv": 634,
+    "202312.csv": 638,
+    "202401.csv": 605,
+    "202402.csv": 567,
+    "202403.csv": 478,
+    "202404.csv": 472,
+    "202405.csv": 707,
+    "202406.csv": 559,
+    "202407.csv": 480,
+    "202408.csv": 490,
+    "202409.csv": 458,
+    "202410.csv": 429,
+    "202411.csv": 643,
+    "202412.csv": 574,
+    "202501.csv": 425,
+    "202502.csv": 458,
+    "202503.csv": 452,
+    "202504-1.csv": 465,
+    "202504-2.csv": 244,
+    "202505.csv": 660,
+    "202506.csv": 444,
+    "202507.csv": 443,
+    "202508.csv": 391,
+    "202509.csv": 482,
+    "202510.csv": 445,
+    "202511-1.csv": 218,
+    "202511-2.csv": 643,
+    "202512.csv": 349
+  }
+}

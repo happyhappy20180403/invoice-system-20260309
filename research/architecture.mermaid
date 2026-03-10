@@ -1,0 +1,56 @@
+C4Context
+    title Xero Invoice Auto-Input System - C4 Architecture
+
+    Person(staff, "Property Staff", "Inputs 5 fields: Date, Project, Unit No, Detail, Final Price")
+
+    System_Boundary(system, "Invoice Auto-Input System (Next.js 15 App Router)") {
+
+        Container_Boundary(frontend, "Client Layer") {
+            Component(ui, "Invoice Input UI", "React Server Components + Client Components", "5-field input form with fuzzy autocomplete")
+            Component(preview, "Invoice Preview", "Client Component", "Shows auto-filled invoice before submission")
+        }
+
+        Container_Boundary(serverActions, "Server Action Layer") {
+            Component(fuzzyAction, "Fuzzy Match Action", "Server Action", "Searches historical data for auto-complete suggestions")
+            Component(invoiceAction, "Create Invoice Action", "Server Action", "Validates and submits invoice to Xero")
+        }
+
+        Container_Boundary(apiLayer, "Route Handler Layer (app/api/)") {
+            Component(authHandler, "OAuth Callback Handler", "Route Handler", "Handles Xero OAuth2 redirect callback")
+            Component(webhookHandler, "Webhook Handler", "Route Handler", "Receives Xero webhook events")
+        }
+
+        Container_Boundary(services, "Service Layer") {
+            Component(xeroService, "Xero API Service", "xero-node SDK", "Wraps all Xero API calls with retry/rate-limit logic")
+            Component(tokenService, "Token Manager", "Server-side singleton", "Proactive token refresh with mutex lock")
+            Component(matchEngine, "Match Engine", "Fuse.js", "Fuzzy matching against 18,860 historical records")
+        }
+
+        Container_Boundary(dataLayer, "Data Layer") {
+            Component(cache, "Cache Layer", "Node.js in-memory / unstable_cache", "Caches Xero contacts, accounts, tracking categories")
+            Component(db, "Database", "SQLite / Prisma", "Historical invoice data (3 years, 18,860 records)")
+        }
+    }
+
+    System_Ext(xeroApi, "Xero API", "OAuth2 + REST API (60/min, 5000/day rate limits)")
+    System_Ext(xeroAuth, "Xero Identity", "OAuth2 Authorization Server (access: 30min, refresh: 60 days)")
+
+    Rel(staff, ui, "Inputs 5 fields")
+    Rel(ui, fuzzyAction, "Triggers fuzzy search on input change")
+    Rel(fuzzyAction, matchEngine, "Finds best matches")
+    Rel(matchEngine, db, "Queries historical data")
+    Rel(matchEngine, cache, "Reads cached Xero contacts/accounts")
+    Rel(fuzzyAction, ui, "Returns auto-complete suggestions")
+    Rel(ui, preview, "Shows auto-filled invoice")
+    Rel(preview, invoiceAction, "Staff confirms submission")
+    Rel(invoiceAction, xeroService, "Creates invoice via SDK")
+    Rel(xeroService, tokenService, "Gets valid access token")
+    Rel(tokenService, xeroAuth, "Refreshes token proactively before expiry")
+    Rel(xeroService, xeroApi, "POST /api.xro/2.0/Invoices")
+    Rel(xeroService, cache, "Reads/updates cached reference data")
+    Rel(authHandler, xeroAuth, "OAuth2 callback exchange")
+    Rel(webhookHandler, xeroApi, "Receives webhook notifications")
+    Rel(cache, xeroApi, "Periodic refresh of contacts/accounts/tracking")
+
+    UpdateRelStyle(staff, ui, $offsetX="-40", $offsetY="-20")
+    UpdateRelStyle(xeroService, xeroApi, $offsetX="10", $offsetY="-20")
