@@ -1,6 +1,8 @@
 /**
  * OCR Text Parser
  * Extracts structured repair/invoice data from raw OCR text.
+ *
+ * Handles both clean text and noisy Tesseract output from scanned PDFs.
  */
 
 export interface ParsedItem {
@@ -18,61 +20,76 @@ export interface ParseResult {
   rawText: string;
 }
 
-// Known project names for fuzzy matching
-const KNOWN_PROJECTS = [
-  'MOLEK PINE',
-  'MOLEK REGENCY',
-  'MOLEK TROPIKA',
-  'TAMAN MOLEK',
-  'SKUDAI PARADE',
-  'AUSTIN HEIGHTS',
-  'BUKIT INDAH',
-  'MOUNT AUSTIN',
-  'KEMPAS INDAH',
-  'PUTERI HARBOUR',
-];
+// -----------------------------------------------------------------------
+// Known project names — includes abbreviations found in real repair lists
+// -----------------------------------------------------------------------
+const PROJECT_ALIASES: Record<string, string> = {
+  'MOLEK PINE': 'MOLEK PINE',
+  'MP4': 'MOLEK PINE 4',
+  'MP3': 'MOLEK PINE 3',
+  'MOLEK REGENCY': 'MOLEK REGENCY',
+  'MOLEK TROPIKA': 'MOLEK TROPIKA',
+  'MOLEK PULA': 'MOLEK PULAI',
+  'MOLEK PULAI': 'MOLEK PULAI',
+  'TAMAN MOLEK': 'TAMAN MOLEK',
+  'SUASANA': 'SUASANA',
+  'SUMMER PLACE': 'SUMMER PLACE',
+  'PONDER OSA': 'PONDEROSA',
+  'PONDEROSA': 'PONDEROSA',
+  'IMPERIA': 'IMPERIA',
+  'AUSTIN HEIGHTS': 'AUSTIN HEIGHTS',
+  'BUKIT INDAH': 'BUKIT INDAH',
+  'MOUNT AUSTIN': 'MOUNT AUSTIN',
+  'KEMPAS INDAH': 'KEMPAS INDAH',
+  'PUTERI HARBOUR': 'PUTERI HARBOUR',
+  'SKUDAI PARADE': 'SKUDAI PARADE',
+};
 
-// Date patterns: DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY, DD.MM.YYYY
+// Sorted by length descending so longer matches take priority
+const PROJECT_KEYS = Object.keys(PROJECT_ALIASES).sort(
+  (a, b) => b.length - a.length,
+);
+
+// -----------------------------------------------------------------------
+// Patterns
+// -----------------------------------------------------------------------
+
+// Date: DD/MM/YYYY, YYYY-MM-DD, DD-MM-YYYY, DD.MM.YYYY
 const DATE_PATTERNS = [
-  /\b(\d{2})\/(\d{2})\/(\d{4})\b/,    // DD/MM/YYYY
-  /\b(\d{4})-(\d{2})-(\d{2})\b/,      // YYYY-MM-DD
-  /\b(\d{2})-(\d{2})-(\d{4})\b/,      // DD-MM-YYYY
-  /\b(\d{2})\.(\d{2})\.(\d{4})\b/,    // DD.MM.YYYY
+  /\b(\d{2})\/(\d{2})\/(\d{4})\b/,
+  /\b(\d{4})-(\d{2})-(\d{2})\b/,
+  /\b(\d{2})-(\d{2})-(\d{4})\b/,
+  /\b(\d{2})\.(\d{2})\.(\d{4})\b/,
 ];
 
-// Unit number pattern: e.g. A-12-03, B-05-11, 3A-07-22
-const UNIT_PATTERN = /\b([A-Z0-9]{1,3}-\d{2}-\d{2,3})\b/i;
+// Unit number: B-10-03, B-13A-06, 14-01, 33-12, etc.
+const UNIT_PATTERN = /\b([A-Z]?-?\d{1,3}[A-Z]?-\d{2,3})\b/i;
 
-// Amount patterns: RM xxx.xx, MYR xxx, RM1,234.56
+// Amount: plain numbers (3+ digits), RM xxx, MYR xxx
 const AMOUNT_PATTERNS = [
   /RM\s*([0-9,]+(?:\.\d{1,2})?)/i,
   /MYR\s*([0-9,]+(?:\.\d{1,2})?)/i,
-  /\b([0-9]{1,3}(?:,\d{3})*(?:\.\d{2}))\b/,
+  // Standalone number that looks like money (at least 2 digits, possibly with decimals)
+  /\b(\d{2,6}(?:\.\d{1,2})?)\b/,
 ];
 
-/**
- * Normalize a date string to YYYY-MM-DD format.
- */
+// -----------------------------------------------------------------------
+// Extraction helpers
+// -----------------------------------------------------------------------
+
 function normalizeDate(raw: string): string {
-  // DD/MM/YYYY
   const dmySlash = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
   if (dmySlash) return `${dmySlash[3]}-${dmySlash[2]}-${dmySlash[1]}`;
 
-  // DD-MM-YYYY
   const dmyDash = /^(\d{2})-(\d{2})-(\d{4})$/.exec(raw);
   if (dmyDash) return `${dmyDash[3]}-${dmyDash[2]}-${dmyDash[1]}`;
 
-  // DD.MM.YYYY
   const dmyDot = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(raw);
   if (dmyDot) return `${dmyDot[3]}-${dmyDot[2]}-${dmyDot[1]}`;
 
-  // Already YYYY-MM-DD
   return raw;
 }
 
-/**
- * Extract date from a line of text.
- */
 function extractDate(line: string): { value: string; confidence: number } {
   for (const pattern of DATE_PATTERNS) {
     const match = pattern.exec(line);
@@ -83,30 +100,16 @@ function extractDate(line: string): { value: string; confidence: number } {
   return { value: new Date().toISOString().slice(0, 10), confidence: 0.1 };
 }
 
-/**
- * Extract project name from a line using known project list.
- */
 function extractProject(line: string): { value: string; confidence: number } {
   const upper = line.toUpperCase();
-  for (const proj of KNOWN_PROJECTS) {
-    if (upper.includes(proj)) {
-      return { value: proj, confidence: 0.95 };
-    }
-  }
-  // Partial match: check if any word sequence matches
-  for (const proj of KNOWN_PROJECTS) {
-    const words = proj.split(' ');
-    const firstWord = words[0];
-    if (upper.includes(firstWord)) {
-      return { value: proj, confidence: 0.5 };
+  for (const key of PROJECT_KEYS) {
+    if (upper.includes(key)) {
+      return { value: PROJECT_ALIASES[key], confidence: 0.95 };
     }
   }
   return { value: '', confidence: 0.0 };
 }
 
-/**
- * Extract unit number from a line.
- */
 function extractUnitNo(line: string): { value: string; confidence: number } {
   const match = UNIT_PATTERN.exec(line);
   if (match) {
@@ -115,11 +118,9 @@ function extractUnitNo(line: string): { value: string; confidence: number } {
   return { value: '', confidence: 0.0 };
 }
 
-/**
- * Extract monetary amount from a line.
- */
 function extractAmount(line: string): { value: number | null; confidence: number } {
-  for (const pattern of AMOUNT_PATTERNS) {
+  // Try RM/MYR patterns first (high confidence)
+  for (const pattern of AMOUNT_PATTERNS.slice(0, 2)) {
     const match = pattern.exec(line);
     if (match) {
       const raw = match[1].replace(/,/g, '');
@@ -129,11 +130,48 @@ function extractAmount(line: string): { value: number | null; confidence: number
       }
     }
   }
+
+  // Strip dates from the line first to avoid matching years as amounts
+  let cleaned = line;
+  for (const pattern of DATE_PATTERNS) {
+    cleaned = cleaned.replace(new RegExp(pattern.source, 'g'), ' ');
+  }
+  // Also strip date-like fragments the OCR may produce (e.g. "040272025", "1110212026")
+  cleaned = cleaned.replace(/\b\d{8,10}\b/g, ' ');
+
+  // Look for amounts after "banking" keyword (typical in repair list tables)
+  const bankingMatch = /banking\s*\|?\s*(\d{1,6}(?:\.\d{1,2})?)/i.exec(cleaned);
+  if (bankingMatch) {
+    const num = parseFloat(bankingMatch[1]);
+    if (!isNaN(num) && num >= 10 && num <= 99999) {
+      return { value: num, confidence: 0.8 };
+    }
+  }
+
+  // Fallback: collect standalone numbers, filter out years and date fragments
+  const YEAR_VALUES = new Set([2024, 2025, 2026, 2027, 2028]);
+  const amountCandidates: number[] = [];
+  const numRegex = /\b(\d{2,6}(?:\.\d{1,2})?)\b/g;
+  let m;
+  while ((m = numRegex.exec(cleaned)) !== null) {
+    const num = parseFloat(m[1]);
+    if (num < 10 || num > 50000) continue;
+    if (YEAR_VALUES.has(num)) continue;
+    // Skip if adjacent to "/" (date fragment)
+    const ctx = cleaned.substring(Math.max(0, m.index - 2), m.index + m[0].length + 2);
+    if (/\//.test(ctx)) continue;
+    amountCandidates.push(num);
+  }
+
+  if (amountCandidates.length > 0) {
+    return { value: amountCandidates[0], confidence: 0.6 };
+  }
+
   return { value: null, confidence: 0.0 };
 }
 
 /**
- * Extract description from a line (everything after known fields are removed).
+ * Extract description by removing known fields from the line.
  */
 function extractDescription(line: string): string {
   let desc = line;
@@ -146,23 +184,38 @@ function extractDescription(line: string): string {
   // Remove unit number
   desc = desc.replace(UNIT_PATTERN, '');
 
-  // Remove amount patterns
-  for (const pattern of AMOUNT_PATTERNS) {
+  // Remove amount patterns (RM/MYR)
+  for (const pattern of AMOUNT_PATTERNS.slice(0, 2)) {
     desc = desc.replace(pattern, '');
   }
 
-  // Remove known project names
-  for (const proj of KNOWN_PROJECTS) {
-    desc = desc.replace(new RegExp(proj, 'gi'), '');
+  // Remove project names/abbreviations
+  for (const key of PROJECT_KEYS) {
+    desc = desc.replace(new RegExp(key, 'gi'), '');
   }
 
-  // Clean up remaining punctuation and whitespace
-  return desc.replace(/[|,;:\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // Remove common OCR noise: "internet banking", "petty cash", pipe chars, etc.
+  desc = desc.replace(/internet\s*banking/gi, '');
+  desc = desc.replace(/petty\s*cash/gi, '');
+  desc = desc.replace(/\breceipt\b/gi, '');
+  desc = desc.replace(/\bclaim\b/gi, '');
+  desc = desc.replace(/\btenant\b/gi, '');
+
+  // Remove standalone numbers (amounts, noise), pipe chars
+  desc = desc.replace(/\|\s*/g, ' ');
+  desc = desc.replace(/\b\d{2,6}(?:\.\d{1,2})?\b/g, ' ');
+
+  // Clean up
+  desc = desc.replace(/[|,;:\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Capitalize first letter
+  if (desc.length > 0) {
+    desc = desc.charAt(0).toUpperCase() + desc.slice(1).toLowerCase();
+  }
+
+  return desc;
 }
 
-/**
- * Compute overall confidence score for a parsed item.
- */
 function computeConfidence(
   dateConf: number,
   projectConf: number,
@@ -178,56 +231,70 @@ function computeConfidence(
   return weights.reduce((acc, w) => acc + w.conf * w.weight, 0);
 }
 
-/**
- * Determine if a line is a meaningful data line (not header/blank/noise).
- */
 function isDataLine(line: string): boolean {
   const trimmed = line.trim();
   if (trimmed.length < 5) return false;
-
-  // Skip lines that are purely numeric (page numbers etc.)
   if (/^\d+$/.test(trimmed)) return false;
-
-  // Must contain at least one alphanumeric char
   if (!/[a-zA-Z0-9]/.test(trimmed)) return false;
-
   return true;
 }
 
 /**
- * Parse raw OCR text into structured repair/invoice items.
- * Each non-empty line is treated as a potential record.
- * Lines containing unit numbers are prioritised as individual items.
+ * Merge multi-line OCR entries.
+ * Tesseract often splits table rows across lines:
+ *   Line 1: "03/02/2026 | SUASANA | 14-01"
+ *   Line 2: "REPLACEMENT REPAIR  internet banking  2600"
+ *
+ * This function merges continuation lines into the preceding data line.
  */
-export function parseOcrText(rawText: string): ParseResult {
-  const lines = rawText.split('\n');
-  const items: ParsedItem[] = [];
-
-  // Collect global date (first date found in document acts as fallback)
-  let globalDate = new Date().toISOString().slice(0, 10);
-  let globalProject = '';
+function mergeMultiLineEntries(lines: string[]): string[] {
+  const merged: string[] = [];
 
   for (const line of lines) {
     if (!isDataLine(line)) continue;
 
+    const hasDate = DATE_PATTERNS.some(p => p.test(line));
+    const hasUnit = UNIT_PATTERN.test(line);
+
+    if (hasDate || hasUnit) {
+      // Start of a new entry
+      merged.push(line.trim());
+    } else if (merged.length > 0) {
+      // Continuation of previous entry — append
+      merged[merged.length - 1] += ' ' + line.trim();
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Parse raw OCR text into structured repair/invoice items.
+ */
+export function parseOcrText(rawText: string): ParseResult {
+  const rawLines = rawText.split('\n');
+  const mergedLines = mergeMultiLineEntries(rawLines);
+
+  const items: ParsedItem[] = [];
+
+  // Collect global context (date, project) from first pass
+  let globalDate = new Date().toISOString().slice(0, 10);
+  let globalProject = '';
+
+  for (const line of mergedLines) {
     const dateResult = extractDate(line);
-    if (dateResult.confidence > 0.5) {
+    if (dateResult.confidence > 0.5 && !globalDate) {
       globalDate = dateResult.value;
     }
-
     const projectResult = extractProject(line);
     if (projectResult.confidence > 0.4 && !globalProject) {
       globalProject = projectResult.value;
     }
   }
 
-  // Second pass: extract items per line
-  for (const line of lines) {
-    if (!isDataLine(line)) continue;
-
+  // Second pass: extract items
+  for (const line of mergedLines) {
     const unitResult = extractUnitNo(line);
-
-    // Only create a record if we found a unit number
     if (unitResult.confidence < 0.5) continue;
 
     const dateResult = extractDate(line);
@@ -236,11 +303,16 @@ export function parseOcrText(rawText: string): ParseResult {
     const description = extractDescription(line);
 
     const date = dateResult.confidence > 0.5 ? dateResult.value : globalDate;
-    const project = projectResult.confidence > 0.4 ? projectResult.value : globalProject;
+    const project =
+      projectResult.confidence > 0.4 ? projectResult.value : globalProject;
 
     const confidence = computeConfidence(
       dateResult.confidence > 0.5 ? dateResult.confidence : 0.3,
-      project ? (projectResult.confidence > 0.4 ? projectResult.confidence : 0.3) : 0.0,
+      project
+        ? projectResult.confidence > 0.4
+          ? projectResult.confidence
+          : 0.3
+        : 0.0,
       unitResult.confidence,
       amountResult.confidence,
     );
@@ -252,7 +324,7 @@ export function parseOcrText(rawText: string): ParseResult {
       description: description || 'Repair/Maintenance',
       amount: amountResult.value,
       confidence: Math.round(confidence * 100) / 100,
-      rawLine: line.trim(),
+      rawLine: line.trim().substring(0, 200),
     });
   }
 
