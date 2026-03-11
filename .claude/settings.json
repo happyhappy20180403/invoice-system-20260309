@@ -117,6 +117,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node .claude/hooks/auto-git-save.js",
+            "timeout": 35
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node .claude/hooks/definition-lint-gate.js",
             "timeout": 5
           }
@@ -159,12 +169,33 @@
         "hooks": [
           {
             "type": "command",
+            "command": "node .claude/hooks/auto-git-save.js session-end",
+            "timeout": 35
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
             "command": "node .claude/hooks/session-handoff-generator.js",
             "timeout": 5
           }
         ]
       }
     ],
-    "Stop": []
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/auto-git-save.js stop",
+            "timeout": 35
+          }
+        ]
+      }
+    ]
   }
 }
