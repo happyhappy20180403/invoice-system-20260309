@@ -1,4 +1,5 @@
 import { getValidToken } from './token-manager';
+import { trackedFetch } from '@/lib/metrics/collector';
 
 const XERO_API_BASE = 'https://api.xero.com/api.xro/2.0';
 
@@ -39,11 +40,15 @@ async function xeroRequest(
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await rateLimitedFetch(`${XERO_API_BASE}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const response = await trackedFetch(
+    `${XERO_API_BASE}${endpoint}`,
+    {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    },
+    rateLimitedFetch,
+  );
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -94,4 +99,53 @@ export async function createXeroInvoice(
     Invoices: [invoice],
   })) as any;
   return data.Invoices?.[0];
+}
+
+// ---------------------------------------------------------------------------
+// Credit Note
+// ---------------------------------------------------------------------------
+
+export interface XeroCreditNotePayload {
+  Type: 'ACCRECCREDIT';
+  Contact: { Name: string };
+  Date: string;
+  LineItems: Array<{
+    Description: string;
+    Quantity: number;
+    UnitAmount: number;
+    AccountCode: string;
+    TaxType: string;
+  }>;
+  Reference?: string;
+  Status: 'DRAFT';
+}
+
+export async function createXeroCreditNote(
+  userId: string,
+  creditNote: XeroCreditNotePayload,
+): Promise<any> {
+  const data = (await xeroRequest(userId, '/CreditNotes', 'PUT', {
+    CreditNotes: [creditNote],
+  })) as any;
+  return data.CreditNotes?.[0];
+}
+
+// ---------------------------------------------------------------------------
+// Batch Invoices (max 50 per request)
+// ---------------------------------------------------------------------------
+
+export async function createXeroBatchInvoices(
+  userId: string,
+  invoices: XeroInvoicePayload[],
+): Promise<any[]> {
+  if (invoices.length === 0) return [];
+  if (invoices.length > 50) {
+    throw new Error('createXeroBatchInvoices: maximum 50 invoices per request');
+  }
+
+  const data = (await xeroRequest(userId, '/Invoices', 'PUT', {
+    Invoices: invoices,
+  })) as any;
+
+  return data.Invoices ?? [];
 }

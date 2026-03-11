@@ -1,6 +1,10 @@
 import NextAuth from 'next-auth';
 import type { NextAuthConfig } from 'next-auth';
 import { saveToken } from '@/lib/xero/token-manager';
+import { db } from '@/lib/db';
+import { users } from '@/lib/db/schema';
+import { eq } from 'drizzle-orm';
+import type { Role } from '@/lib/rbac';
 
 export const authConfig: NextAuthConfig = {
   providers: [
@@ -26,7 +30,7 @@ export const authConfig: NextAuthConfig = {
     },
   ],
   callbacks: {
-    async jwt({ token, account }) {
+    async jwt({ token, account, profile }) {
       if (account) {
         token.accessToken = account.access_token;
         token.refreshToken = account.refresh_token;
@@ -56,13 +60,61 @@ export const authConfig: NextAuthConfig = {
         } catch (e) {
           console.error('Failed to fetch Xero connections:', e);
         }
+
+        // 初回ログイン時: ユーザーをDBに作成またはロールを取得
+        if (profile?.email) {
+          const email = profile.email as string;
+          const name = (profile.name ?? profile.preferred_username ?? null) as string | null;
+          const xeroUserId = account.providerAccountId ?? null;
+
+          try {
+            const existing = await db
+              .select({ role: users.role })
+              .from(users)
+              .where(eq(users.email, email))
+              .limit(1);
+
+            if (existing.length === 0) {
+              // 初回ログイン: staff ロールで作成
+              await db.insert(users).values({
+                email,
+                name,
+                role: 'staff',
+                xeroUserId,
+                isActive: true,
+              });
+              token.role = 'staff';
+            } else {
+              token.role = existing[0].role as Role;
+            }
+          } catch (e) {
+            console.error('Failed to upsert user in DB:', e);
+            token.role = 'staff';
+          }
+        }
       }
+
+      // DB上のロールが更新された場合に備えて毎回取得する
+      if (!token.role && token.email) {
+        try {
+          const result = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.email, token.email as string))
+            .limit(1);
+          token.role = result.length > 0 ? (result[0].role as Role) : 'staff';
+        } catch {
+          token.role = 'staff';
+        }
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         (session as any).xeroUserId = token.xeroUserId;
         (session as any).tenantId = token.tenantId;
+        (session as any).role = token.role ?? 'staff';
       }
       return session;
     },

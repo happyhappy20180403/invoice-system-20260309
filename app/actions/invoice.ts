@@ -1,7 +1,12 @@
 'use server';
 
 import { auth } from '@/lib/auth';
-import { createXeroInvoice, type XeroInvoicePayload } from '@/lib/xero/xero-service';
+import {
+  createXeroInvoice,
+  createXeroCreditNote,
+  type XeroInvoicePayload,
+  type XeroCreditNotePayload,
+} from '@/lib/xero/xero-service';
 import { db } from '@/lib/db';
 import { createdInvoices } from '@/lib/db/schema';
 import { z } from 'zod';
@@ -92,6 +97,87 @@ export async function createInvoiceAction(formData: InvoiceFormData) {
     };
   } catch (error) {
     console.error('Invoice creation failed:', error);
+    return { success: false, error: String(error) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Credit Note Action
+// ---------------------------------------------------------------------------
+
+const CreditNoteFormSchema = z.object({
+  date: z.string().min(1),
+  project: z.string().min(1),
+  unitNo: z.string().min(1),
+  description: z.string().min(1),
+  finalPrice: z.number().positive(),
+  contactName: z.string().min(1),
+  accountCode: z.string().min(1),
+  taxType: z.string().min(1),
+  reference: z.string().optional(),
+  quantity: z.number().default(1),
+  unitAmount: z.number().optional(),
+});
+
+export type CreditNoteFormData = z.infer<typeof CreditNoteFormSchema>;
+
+export async function createCreditNoteAction(formData: CreditNoteFormData) {
+  const session = await auth();
+  if (!session?.user) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const parsed = CreditNoteFormSchema.safeParse(formData);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.flatten().fieldErrors };
+  }
+
+  const data = parsed.data;
+  const xeroUserId = (session as any).xeroUserId;
+
+  const payload: XeroCreditNotePayload = {
+    Type: 'ACCRECCREDIT',
+    Contact: { Name: data.contactName },
+    Date: data.date,
+    LineItems: [
+      {
+        Description: data.description,
+        Quantity: data.quantity,
+        UnitAmount: data.unitAmount ?? data.finalPrice / data.quantity,
+        AccountCode: data.accountCode,
+        TaxType: data.taxType,
+      },
+    ],
+    Reference: data.reference,
+    Status: 'DRAFT',
+  };
+
+  try {
+    const result = await createXeroCreditNote(xeroUserId, payload);
+
+    // Audit log (reuse createdInvoices table with status indicator)
+    db.insert(createdInvoices)
+      .values({
+        xeroInvoiceId: result.CreditNoteID,
+        invoiceNumber: result.CreditNoteNumber,
+        contactName: data.contactName,
+        project: data.project,
+        unitNo: data.unitNo,
+        description: data.description,
+        totalAmount: data.finalPrice,
+        status: 'DRAFT_CREDIT',
+        createdBy: session.user?.email ?? xeroUserId,
+        rawPayload: JSON.stringify(payload),
+      })
+      .run();
+
+    return {
+      success: true,
+      creditNoteId: result.CreditNoteID,
+      creditNoteNumber: result.CreditNoteNumber,
+    };
+  } catch (error) {
+    console.error('Credit note creation failed:', error);
     return { success: false, error: String(error) };
   }
 }

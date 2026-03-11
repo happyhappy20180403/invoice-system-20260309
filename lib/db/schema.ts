@@ -1,6 +1,17 @@
 import { sqliteTable, text, integer, real } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
+export const users = sqliteTable('users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  email: text('email').unique().notNull(),
+  name: text('name'),
+  role: text('role').notNull().default('staff'), // 'admin' | 'accountant' | 'staff'
+  xeroUserId: text('xero_user_id'),
+  isActive: integer('is_active', { mode: 'boolean' }).default(true),
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
+  updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+});
+
 export const xeroTokens = sqliteTable('xero_tokens', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: text('user_id').unique(),
@@ -73,4 +84,33 @@ export const systemConfig = sqliteTable('system_config', {
   key: text('key').primaryKey(),
   value: text('value'),
   updatedAt: integer('updated_at').default(sql`(unixepoch())`),
+});
+
+export const apiMetrics = sqliteTable('api_metrics', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  endpoint: text('endpoint'),
+  method: text('method'),
+  statusCode: integer('status_code'),
+  responseTimeMs: integer('response_time_ms'),
+  errorMessage: text('error_message'),
+  timestamp: integer('timestamp').default(sql`(unixepoch())`),
+});
+
+export const systemMetrics = sqliteTable('system_metrics', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  metricName: text('metric_name'),
+  metricValue: real('metric_value'),
+  metadata: text('metadata'),
+  timestamp: integer('timestamp').default(sql`(unixepoch())`),
+});
+
+export const ocrUploads = sqliteTable('ocr_uploads', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  filename: text('filename'),
+  fileType: text('file_type'),
+  rawText: text('raw_text'),
+  parsedData: text('parsed_data'),
+  status: text('status').default('pending'),
+  createdBy: text('created_by'),
+  createdAt: integer('created_at').default(sql`(unixepoch())`),
 });

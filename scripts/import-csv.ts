@@ -95,7 +95,7 @@ function importCsvFile(filePath: string): number {
   });
 
   let count = 0;
-  for (const row of records) {
+  for (const row of records as Record<string, string>[]) {
     const contactName = row['ContactName'] || row['*ContactName'] || '';
     const { project, unitNo } = extractProjectAndUnit(contactName);
 

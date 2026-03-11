@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { createInvoiceAction } from '@/app/actions/invoice';
+import { createInvoiceAction, createCreditNoteAction } from '@/app/actions/invoice';
 import type { PreviewData } from './InvoiceDashboard';
 
 interface Props {
@@ -41,11 +41,38 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
     });
   };
 
+  const isCreditNote = formState.invoiceType === 'ACCRECCREDIT';
+
   const handleSubmit = async () => {
     setIsSubmitting(true);
     setError(null);
 
     try {
+      if (isCreditNote) {
+        const result = await createCreditNoteAction({
+          date: data.date,
+          project: data.project,
+          unitNo: data.unitNo,
+          description: data.description,
+          finalPrice: data.finalPrice,
+          contactName: formState.contactName,
+          accountCode: formState.accountCode,
+          taxType: formState.taxType,
+          reference: formState.reference,
+          quantity: formState.quantity,
+        });
+
+        if (result.success) {
+          onCreated({
+            invoiceId: result.creditNoteId!,
+            invoiceNumber: result.creditNoteNumber ?? '',
+          });
+        } else {
+          setError(typeof result.error === 'string' ? result.error : JSON.stringify(result.error));
+        }
+        return;
+      }
+
       const result = await createInvoiceAction({
         date: data.date,
         dueDate: formState.dueDate,
@@ -163,10 +190,15 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
             <select
               value={formState.invoiceType}
               onChange={e => setFormState(s => ({ ...s, invoiceType: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
+              className={`w-full rounded border px-2 py-1.5 text-sm focus:outline-none ${
+                formState.invoiceType === 'ACCRECCREDIT'
+                  ? 'border-orange-300 bg-orange-50 text-orange-800 focus:border-orange-500'
+                  : 'border-gray-300 focus:border-blue-500'
+              }`}
             >
               <option value="ACCREC">Accounts Receivable</option>
               <option value="ACCPAY">Accounts Payable</option>
+              <option value="ACCRECCREDIT">Credit Note</option>
             </select>
           </div>
           <div>
@@ -214,12 +246,26 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
         </div>
       )}
 
+      {isCreditNote && (
+        <div className="mb-3 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2 text-sm text-orange-800">
+          Credit Note mode: a DRAFT credit note (ACCRECCREDIT) will be created in Xero.
+        </div>
+      )}
+
       <button
         onClick={handleSubmit}
         disabled={isSubmitting || !formState.contactName || !formState.accountCode}
-        className="w-full rounded-lg bg-green-600 px-6 py-3 font-semibold text-white transition hover:bg-green-700 focus:outline-none focus:ring-4 focus:ring-green-200 disabled:cursor-not-allowed disabled:bg-gray-300"
+        className={`w-full rounded-lg px-6 py-3 font-semibold text-white transition focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:bg-gray-300 ${
+          isCreditNote
+            ? 'bg-orange-500 hover:bg-orange-600 focus:ring-orange-200'
+            : 'bg-green-600 hover:bg-green-700 focus:ring-green-200'
+        }`}
       >
-        {isSubmitting ? 'Creating DRAFT...' : 'Create DRAFT Invoice in Xero'}
+        {isSubmitting
+          ? 'Creating DRAFT...'
+          : isCreditNote
+          ? 'Create DRAFT Credit Note in Xero'
+          : 'Create DRAFT Invoice in Xero'}
       </button>
     </div>
   );
