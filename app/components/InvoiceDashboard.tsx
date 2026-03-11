@@ -37,6 +37,7 @@ interface OcrResult {
   rawText: string;
   items: ParsedItem[];
   isMock: boolean;
+  ocrMethod?: string;
 }
 
 export default function InvoiceDashboard() {
@@ -184,9 +185,10 @@ export default function InvoiceDashboard() {
 
       {/* ===== OCR Upload Tab ===== */}
       {activeTab === 'ocr' && (
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-          <div>
-            {ocrPhase === 'upload' && (
+        <>
+          {/* Upload phase — 2-column layout */}
+          {ocrPhase === 'upload' && (
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
               <div className="rounded-xl bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-xl font-semibold">Upload Document</h2>
                 <p className="mb-5 text-sm text-gray-500">
@@ -203,20 +205,39 @@ export default function InvoiceDashboard() {
                   <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{ocrError}</div>
                 )}
               </div>
-            )}
-            {ocrPhase === 'review' && ocrResult && (
-              <div className="rounded-xl bg-white p-6 shadow-sm">
-                <OcrReview
-                  uploadId={ocrResult.uploadId}
-                  rawText={ocrResult.rawText}
-                  items={ocrResult.items}
-                  isMock={ocrResult.isMock}
-                  onConfirm={handleOcrConfirm}
-                  onBack={resetOcr}
-                />
+              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8">
+                <div className="space-y-4 text-sm text-gray-500">
+                  <h3 className="text-base font-semibold text-gray-700">How OCR Upload works</h3>
+                  <ol className="list-inside list-decimal space-y-2">
+                    <li>Upload your repair work order (PDF or image)</li>
+                    <li>Review the automatically extracted items</li>
+                    <li>Edit any fields that need correction</li>
+                    <li>Confirm items to create DRAFT invoices in Xero</li>
+                  </ol>
+                  <p className="text-xs text-gray-400">Supported formats: PDF, JPG, PNG (max 10 MB)</p>
+                </div>
               </div>
-            )}
-            {ocrPhase === 'preview' && ocrPreviews.length > 0 && (
+            </div>
+          )}
+
+          {/* Review phase — FULL WIDTH for the table */}
+          {ocrPhase === 'review' && ocrResult && (
+            <div className="rounded-xl bg-white p-6 shadow-sm">
+              <OcrReview
+                uploadId={ocrResult.uploadId}
+                rawText={ocrResult.rawText}
+                items={ocrResult.items}
+                isMock={ocrResult.isMock}
+                ocrMethod={ocrResult.ocrMethod}
+                onConfirm={handleOcrConfirm}
+                onBack={resetOcr}
+              />
+            </div>
+          )}
+
+          {/* Preview phase — 2-column layout */}
+          {ocrPhase === 'preview' && ocrPreviews.length > 0 && (
+            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
               <div className="rounded-xl bg-white p-6 shadow-sm">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-lg font-semibold">
@@ -232,33 +253,7 @@ export default function InvoiceDashboard() {
                   onCreated={handleOcrItemCreated}
                 />
               </div>
-            )}
-          </div>
-          <div>
-            <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8">
-              {ocrPhase === 'upload' && (
-                <div className="space-y-4 text-sm text-gray-500">
-                  <h3 className="text-base font-semibold text-gray-700">How OCR Upload works</h3>
-                  <ol className="list-inside list-decimal space-y-2">
-                    <li>Upload your repair work order (PDF or image)</li>
-                    <li>Review the automatically extracted items</li>
-                    <li>Edit any fields that need correction</li>
-                    <li>Confirm items to create DRAFT invoices in Xero</li>
-                  </ol>
-                  <p className="text-xs text-gray-400">Supported formats: PDF, JPG, PNG (max 10 MB)</p>
-                </div>
-              )}
-              {ocrPhase === 'review' && (
-                <div className="text-sm text-gray-500">
-                  <h3 className="mb-2 text-base font-semibold text-gray-700">Review Tips</h3>
-                  <ul className="list-inside list-disc space-y-1">
-                    <li>Green confidence = high accuracy</li>
-                    <li>Yellow confidence = moderate, please verify</li>
-                    <li>Red confidence = low, manual input needed</li>
-                  </ul>
-                </div>
-              )}
-              {ocrPhase === 'preview' && (
+              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8">
                 <div className="text-sm text-gray-500">
                   <h3 className="mb-2 text-base font-semibold text-gray-700">Creating Invoices</h3>
                   <p>Processing item {ocrPreviewIndex + 1} of {ocrPreviews.length}.</p>
@@ -268,10 +263,10 @@ export default function InvoiceDashboard() {
                     </p>
                   )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -136,19 +136,21 @@ function extractAmount(line: string): { value: number | null; confidence: number
   for (const pattern of DATE_PATTERNS) {
     cleaned = cleaned.replace(new RegExp(pattern.source, 'g'), ' ');
   }
-  // Also strip date-like fragments the OCR may produce (e.g. "040272025", "1110212026")
+  // Strip date-like fragments (e.g. "040272025", "1110212026")
   cleaned = cleaned.replace(/\b\d{8,10}\b/g, ' ');
+  // Strip unit numbers to avoid matching their digits as amounts (B-30-04 → 30)
+  cleaned = cleaned.replace(UNIT_PATTERN, ' ');
 
-  // Look for amounts after "banking" keyword (typical in repair list tables)
-  const bankingMatch = /banking\s*\|?\s*(\d{1,6}(?:\.\d{1,2})?)/i.exec(cleaned);
+  // Look for amount AFTER "internet banking" keyword — this is the primary amount column
+  const bankingMatch = /internet\s+banking[^0-9]*(\d{1,6}(?:\.\d{1,2})?)/i.exec(cleaned);
   if (bankingMatch) {
     const num = parseFloat(bankingMatch[1]);
     if (!isNaN(num) && num >= 10 && num <= 99999) {
-      return { value: num, confidence: 0.8 };
+      return { value: num, confidence: 0.85 };
     }
   }
 
-  // Fallback: collect standalone numbers, filter out years and date fragments
+  // Fallback: collect standalone numbers, filter out years and noise
   const YEAR_VALUES = new Set([2024, 2025, 2026, 2027, 2028]);
   const amountCandidates: number[] = [];
   const numRegex = /\b(\d{2,6}(?:\.\d{1,2})?)\b/g;
@@ -157,7 +159,6 @@ function extractAmount(line: string): { value: number | null; confidence: number
     const num = parseFloat(m[1]);
     if (num < 10 || num > 50000) continue;
     if (YEAR_VALUES.has(num)) continue;
-    // Skip if adjacent to "/" (date fragment)
     const ctx = cleaned.substring(Math.max(0, m.index - 2), m.index + m[0].length + 2);
     if (/\//.test(ctx)) continue;
     amountCandidates.push(num);
@@ -194,19 +195,20 @@ function extractDescription(line: string): string {
     desc = desc.replace(new RegExp(key, 'gi'), '');
   }
 
-  // Remove common OCR noise: "internet banking", "petty cash", pipe chars, etc.
+  // Remove common OCR noise
   desc = desc.replace(/internet\s*banking/gi, '');
   desc = desc.replace(/petty\s*cash/gi, '');
   desc = desc.replace(/\breceipt\b/gi, '');
   desc = desc.replace(/\bclaim\b/gi, '');
   desc = desc.replace(/\btenant\b/gi, '');
 
-  // Remove standalone numbers (amounts, noise), pipe chars
-  desc = desc.replace(/\|\s*/g, ' ');
+  // Remove table border artifacts and noise chars
+  desc = desc.replace(/[|\[\]()~!{}©€¥★×]/g, ' ');
+  // Remove standalone numbers (amounts, noise)
   desc = desc.replace(/\b\d{2,6}(?:\.\d{1,2})?\b/g, ' ');
 
   // Clean up
-  desc = desc.replace(/[|,;:\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  desc = desc.replace(/[,;:\-]+/g, ' ').replace(/\s+/g, ' ').trim();
 
   // Capitalize first letter
   if (desc.length > 0) {

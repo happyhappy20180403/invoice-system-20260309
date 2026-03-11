@@ -6,7 +6,6 @@ import type { PreviewData } from './InvoiceDashboard';
 import { fuzzyMatchAction } from '@/app/actions/match';
 
 interface OcrReviewItem extends ParsedItem {
-  // Editable fields (copied from ParsedItem, kept mutable)
   editDate: string;
   editProject: string;
   editUnitNo: string;
@@ -20,12 +19,12 @@ interface Props {
   rawText: string;
   items: ParsedItem[];
   isMock: boolean;
+  ocrMethod?: string;
   onConfirm: (items: PreviewData[]) => void;
   onBack: () => void;
 }
 
-/** Convert a parsed item to editable state. */
-function toEditable(item: ParsedItem, index: number): OcrReviewItem {
+function toEditable(item: ParsedItem): OcrReviewItem {
   return {
     ...item,
     editDate: item.date,
@@ -33,12 +32,11 @@ function toEditable(item: ParsedItem, index: number): OcrReviewItem {
     editUnitNo: item.unitNo,
     editDescription: item.description,
     editAmount: item.amount !== null ? String(item.amount) : '',
-    selected: true,
+    selected: item.confidence >= 0.4,
   };
 }
 
-/** Confidence badge colour */
-function confidenceBadge(conf: number): string {
+function confidenceColor(conf: number): string {
   if (conf >= 0.75) return 'bg-green-100 text-green-700';
   if (conf >= 0.45) return 'bg-yellow-100 text-yellow-700';
   return 'bg-red-100 text-red-700';
@@ -49,6 +47,7 @@ export default function OcrReview({
   rawText,
   items,
   isMock,
+  ocrMethod,
   onConfirm,
   onBack,
 }: Props) {
@@ -75,6 +74,8 @@ export default function OcrReview({
   };
 
   const selectedItems = editableItems.filter(item => item.selected);
+  const highConfCount = editableItems.filter(i => i.confidence >= 0.75).length;
+  const lowConfCount = editableItems.filter(i => i.confidence < 0.45).length;
 
   const handleConfirm = useCallback(async () => {
     if (selectedItems.length === 0) {
@@ -86,7 +87,6 @@ export default function OcrReview({
     setConfirmError(null);
 
     try {
-      // Build PreviewData for each selected item via fuzzy match
       const previews: PreviewData[] = [];
 
       for (const item of selectedItems) {
@@ -123,7 +123,6 @@ export default function OcrReview({
         });
       }
 
-      // Save feedback (fire-and-forget)
       fetch('/api/ocr/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -149,35 +148,80 @@ export default function OcrReview({
   }, [selectedItems, uploadId, onConfirm]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold">OCR Review</h2>
-          <p className="text-sm text-gray-500">
-            {items.length} item{items.length !== 1 ? 's' : ''} detected.
-            {isMock && (
-              <span className="ml-2 rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-                Mock OCR (no API key)
+          <div className="mt-1 flex items-center gap-2 text-sm text-gray-500">
+            <span>{items.length} items detected</span>
+            {ocrMethod && (
+              <span className={`rounded px-2 py-0.5 text-xs font-medium ${
+                ocrMethod === 'gemini-vision'
+                  ? 'bg-green-100 text-green-700'
+                  : ocrMethod === 'mock'
+                    ? 'bg-amber-100 text-amber-700'
+                    : 'bg-blue-100 text-blue-700'
+              }`}>
+                {ocrMethod}
               </span>
             )}
-          </p>
+            {isMock && (
+              <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                Mock data
+              </span>
+            )}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-sm text-blue-600 hover:underline"
-        >
-          Back to Upload
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Summary badges */}
+          <div className="flex gap-2 text-xs">
+            <span className="rounded-full bg-green-100 px-2.5 py-1 text-green-700">
+              {highConfCount} high
+            </span>
+            <span className="rounded-full bg-yellow-100 px-2.5 py-1 text-yellow-700">
+              {items.length - highConfCount - lowConfCount} mid
+            </span>
+            <span className="rounded-full bg-red-100 px-2.5 py-1 text-red-700">
+              {lowConfCount} low
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Back to Upload
+          </button>
+        </div>
+      </div>
+
+      {/* Tesseract accuracy warning */}
+      {ocrMethod && ocrMethod !== 'gemini-vision' && ocrMethod !== 'mock' && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          <strong>Accuracy notice:</strong> Using local OCR ({ocrMethod}). For higher accuracy,
+          add <code className="rounded bg-amber-100 px-1">GEMINI_API_KEY</code> to .env.local
+          (free at <span className="underline">aistudio.google.com/apikey</span>).
+        </div>
+      )}
+
+      {/* Info bar */}
+      <div className="flex flex-wrap items-center gap-4 rounded-lg bg-blue-50 px-4 py-2.5 text-xs text-blue-700">
+        <span>
+          <strong>Selected:</strong> {selectedItems.length} / {editableItems.length}
+        </span>
+        <span className="text-blue-300">|</span>
+        <span>All fields are editable. Fix OCR errors before confirming.</span>
+        <span className="text-blue-300">|</span>
+        <span>Confirm will match against past invoices for auto-fill.</span>
       </div>
 
       {/* Raw text toggle */}
-      <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="rounded-lg border border-gray-200">
         <button
           type="button"
           onClick={() => setShowRaw(v => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-gray-600 hover:bg-gray-50"
         >
           <span>Raw OCR Text</span>
           <svg
@@ -198,17 +242,17 @@ export default function OcrReview({
         )}
       </div>
 
-      {/* Items table */}
+      {/* Items table — full width */}
       {editableItems.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-gray-200 p-8 text-center text-sm text-gray-400">
-          No items could be extracted. Please check the raw text above and enter data manually.
+          No items could be extracted. Check the raw text above.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50">
               <tr>
-                <th className="px-3 py-3 text-left">
+                <th className="w-10 px-2 py-2.5 text-center">
                   <input
                     type="checkbox"
                     checked={editableItems.every(i => i.selected)}
@@ -217,21 +261,25 @@ export default function OcrReview({
                     aria-label="Select all"
                   />
                 </th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">Date</th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">Project</th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">Unit No</th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">Description</th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">Amount (MYR)</th>
-                <th className="px-3 py-3 text-left font-medium text-gray-600">Confidence</th>
+                <th className="px-2 py-2.5 text-center text-xs font-medium text-gray-500">#</th>
+                <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-500">Date</th>
+                <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-500">Project</th>
+                <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-500">Unit No</th>
+                <th className="px-2 py-2.5 text-left text-xs font-medium text-gray-500">Description</th>
+                <th className="px-2 py-2.5 text-right text-xs font-medium text-gray-500">Amount (RM)</th>
+                <th className="px-2 py-2.5 text-center text-xs font-medium text-gray-500">Conf</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {editableItems.map((item, idx) => (
                 <tr
                   key={idx}
-                  className={item.selected ? 'bg-white' : 'bg-gray-50 opacity-60'}
+                  className={[
+                    'transition-colors',
+                    item.selected ? 'bg-white hover:bg-gray-50' : 'bg-gray-50 opacity-50',
+                  ].join(' ')}
                 >
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5 text-center">
                     <input
                       type="checkbox"
                       checked={item.selected}
@@ -240,46 +288,49 @@ export default function OcrReview({
                       aria-label={`Select item ${idx + 1}`}
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5 text-center text-xs text-gray-400">
+                    {idx + 1}
+                  </td>
+                  <td className="px-2 py-1.5">
                     <input
                       type="date"
                       value={item.editDate}
                       onChange={e => updateField(idx, 'editDate', e.target.value)}
                       disabled={!item.selected}
-                      className="w-32 rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                      className="w-[130px] rounded border border-gray-200 px-1.5 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <input
                       type="text"
                       value={item.editProject}
                       onChange={e => updateField(idx, 'editProject', e.target.value)}
                       disabled={!item.selected}
                       placeholder="Project"
-                      className="w-32 rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                      className="w-[140px] rounded border border-gray-200 px-1.5 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <input
                       type="text"
                       value={item.editUnitNo}
                       onChange={e => updateField(idx, 'editUnitNo', e.target.value)}
                       disabled={!item.selected}
                       placeholder="A-00-00"
-                      className="w-24 rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                      className="w-[90px] rounded border border-gray-200 px-1.5 py-1 text-xs font-mono focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <input
                       type="text"
                       value={item.editDescription}
                       onChange={e => updateField(idx, 'editDescription', e.target.value)}
                       disabled={!item.selected}
                       placeholder="Description"
-                      className="w-48 rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                      className="w-full min-w-[250px] rounded border border-gray-200 px-1.5 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5">
                     <input
                       type="number"
                       value={item.editAmount}
@@ -288,12 +339,12 @@ export default function OcrReview({
                       step="0.01"
                       min="0"
                       placeholder="0.00"
-                      className="w-24 rounded border border-gray-200 px-2 py-1 text-xs focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                      className="w-[100px] rounded border border-gray-200 px-1.5 py-1 text-right text-xs font-mono focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-2 py-1.5 text-center">
                     <span
-                      className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${confidenceBadge(item.confidence)}`}
+                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${confidenceColor(item.confidence)}`}
                     >
                       {Math.round(item.confidence * 100)}%
                     </span>
@@ -305,13 +356,13 @@ export default function OcrReview({
         </div>
       )}
 
-      {/* Raw line reference */}
+      {/* Source lines */}
       {editableItems.length > 0 && (
         <details className="text-xs text-gray-400">
           <summary className="cursor-pointer hover:text-gray-600">
-            Show source lines
+            Show source lines ({editableItems.length})
           </summary>
-          <div className="mt-2 space-y-1 rounded-lg border border-gray-100 p-3">
+          <div className="mt-2 max-h-60 space-y-1 overflow-y-auto rounded-lg border border-gray-100 p-3">
             {editableItems.map((item, idx) => (
               <div key={idx} className="font-mono">
                 <span className="mr-2 text-gray-300">#{idx + 1}</span>
@@ -330,7 +381,7 @@ export default function OcrReview({
       )}
 
       {/* Actions */}
-      <div className="flex gap-3">
+      <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={handleConfirm}
@@ -338,9 +389,12 @@ export default function OcrReview({
           className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-gray-300"
         >
           {isConfirming
-            ? 'Matching...'
-            : `Confirm ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''} & Preview`}
+            ? 'Matching with past invoices...'
+            : `Confirm ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''} & Match`}
         </button>
+        <p className="text-xs text-gray-400 max-w-xs">
+          Matches against past invoice history to auto-fill contact, account code, tax type etc.
+        </p>
       </div>
     </div>
   );

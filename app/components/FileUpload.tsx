@@ -9,6 +9,7 @@ interface OcrResponse {
   rawText: string;
   items: ParsedItem[];
   isMock: boolean;
+  ocrMethod?: string;
 }
 
 interface Props {
@@ -84,10 +85,14 @@ export default function FileUpload({ onOcrComplete, onError }: Props) {
       setIsUploading(true);
       setProgress(0);
 
-      // Simulate initial progress while uploading
+      // Asymptotic progress: approaches 99% but never stops moving
       const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 85));
-      }, 200);
+        setProgress(prev => {
+          const remaining = 99 - prev;
+          // Always move by a fraction of the remaining distance — never stops
+          return prev + remaining * 0.06;
+        });
+      }, 300);
 
       try {
         const formData = new FormData();
@@ -208,7 +213,7 @@ export default function FileUpload({ onOcrComplete, onError }: Props) {
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-gray-500">
             <span>Uploading and running OCR...</span>
-            <span>{progress}%</span>
+            <span>{Math.round(progress)}%</span>
           </div>
           <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
             <div

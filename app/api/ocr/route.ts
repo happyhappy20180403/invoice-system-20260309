@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { ocrUploads } from '@/lib/db/schema';
-import { parseOcrText } from '@/lib/ocr/parser';
+import { parseOcrText, type ParsedItem } from '@/lib/ocr/parser';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -18,13 +18,158 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
 // ---------------------------------------------------------------------------
-// PDF text extraction via pdf-parse
+// Render PDF pages to PNG images via mupdf (shared utility)
 // ---------------------------------------------------------------------------
 
-/**
- * Extract text from a PDF buffer using pdf-parse (class-based API v2+).
- * PDFParse.load() parses the document, getText() returns the full text.
- */
+async function renderPdfPages(buffer: Buffer): Promise<Buffer[]> {
+  const mupdf = await import('mupdf');
+  const doc = mupdf.Document.openDocument(buffer, 'application/pdf');
+  const pageCount = doc.countPages();
+  console.log(`[OCR] mupdf: ${pageCount} page(s)`);
+
+  const pageImages: Buffer[] = [];
+  for (let i = 0; i < pageCount; i++) {
+    const page = doc.loadPage(i);
+    // 2.0x scale + grayscale — optimal balance of quality and size
+    const pixmap = page.toPixmap(
+      [2.0, 0, 0, 2.0, 0, 0],
+      mupdf.ColorSpace.DeviceGray,
+      false,
+      true,
+    );
+    const png = pixmap.asPNG();
+    pageImages.push(Buffer.from(png));
+    console.log(
+      `[OCR] Page ${i + 1}: ${pixmap.getWidth()}x${pixmap.getHeight()} (${(png.length / 1024).toFixed(0)}KB)`,
+    );
+  }
+  return pageImages;
+}
+
+// ---------------------------------------------------------------------------
+// METHOD 1: Gemini Vision — structured JSON extraction (FREE, highest accuracy)
+// ---------------------------------------------------------------------------
+
+interface GeminiExtractedRow {
+  date: string;
+  project: string;
+  unitNo: string;
+  description: string;
+  costAmount: number | null;
+  finalPrice: number | null;
+}
+
+const GEMINI_EXTRACTION_PROMPT = `You are a precise data extraction engine. Extract ALL repair/maintenance line items from this scanned repair work order table.
+
+The table has these columns (left to right):
+1. Date (DD/MM/YYYY)
+2. Project name (abbreviations: MP4=MOLEK PINE 4, MP3=MOLEK PINE 3, SUASANA, PONDER OSA=PONDEROSA, SUMMER PLACE, IMPERIA, MOLEK PULAI)
+3. Unit number (e.g. B-10-03, 14-01, B-13A-06)
+4. Description of repair work (may span 2 lines)
+5. Payment method (internet banking or petty cash)
+6. Receipt No / Amount columns (printed numbers)
+7. Tracking column
+8. **"Final Price (Claim to Customer) (RM)"** — the RIGHTMOST column. These are often HANDWRITTEN numbers. This is the most important amount.
+
+CRITICAL RULES:
+- Extract EVERY row. Do not skip any.
+- "costAmount" = the printed Internet Banking (RM) amount (column 6)
+- "finalPrice" = the HANDWRITTEN amount in the rightmost "Final Price (Claim to Customer)" column. READ THE HANDWRITING CAREFULLY.
+- If finalPrice is blank/unreadable for a row, set it to null.
+- Some descriptions span 2 lines — merge them into one description.
+- Expand project abbreviations.
+- Date format: YYYY-MM-DD
+- Return ONLY valid JSON array. No markdown, no explanation.
+
+Output format:
+[{"date":"2026-02-03","project":"PONDEROSA","unitNo":"B-10-03","description":"Cooker hood repair","costAmount":740,"finalPrice":1180},...]`;
+
+async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+
+  const allItems: ParsedItem[] = [];
+
+  for (let pageIdx = 0; pageIdx < pageImages.length; pageIdx++) {
+    const base64 = pageImages[pageIdx].toString('base64');
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: GEMINI_EXTRACTION_PROMPT },
+                {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: base64,
+                  },
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens: 8192,
+          },
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Gemini API error ${response.status}: ${body}`);
+    }
+
+    const data = (await response.json()) as {
+      candidates?: Array<{
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
+    };
+
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    console.log(`[OCR] Gemini page ${pageIdx + 1} response: ${text.length} chars`);
+
+    // Parse JSON from response (strip markdown fences if present)
+    const jsonStr = text.replace(/^```json?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+    let rows: GeminiExtractedRow[];
+    try {
+      rows = JSON.parse(jsonStr);
+    } catch {
+      console.error(`[OCR] Gemini returned non-JSON for page ${pageIdx + 1}:`, text.substring(0, 200));
+      continue;
+    }
+
+    for (const row of rows) {
+      // Use finalPrice (claim to customer) if available, otherwise fall back to costAmount
+      const amount = typeof row.finalPrice === 'number' ? row.finalPrice
+        : typeof row.costAmount === 'number' ? row.costAmount
+        : null;
+      const cost = typeof row.costAmount === 'number' ? row.costAmount : null;
+      allItems.push({
+        date: row.date || new Date().toISOString().slice(0, 10),
+        project: row.project || '',
+        unitNo: row.unitNo || '',
+        description: row.description || 'Repair/Maintenance',
+        amount,
+        confidence: row.finalPrice != null ? 0.95 : row.costAmount != null ? 0.8 : 0.5,
+        rawLine: `[Gemini] ${row.date} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
+      });
+    }
+  }
+
+  console.log(`[OCR] Gemini extracted ${allItems.length} items total`);
+  return allItems;
+}
+
+// ---------------------------------------------------------------------------
+// METHOD 2: PDF text extraction via pdf-parse
+// ---------------------------------------------------------------------------
+
 async function extractPdfText(buffer: Buffer): Promise<string> {
   const { PDFParse } = await import('pdf-parse');
   const parser = new PDFParse({ data: buffer });
@@ -38,16 +183,39 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Image OCR via Tesseract.js
+// METHOD 3: Scanned PDF OCR via mupdf + Tesseract.js
 // ---------------------------------------------------------------------------
 
-/**
- * OCR an image buffer with Tesseract.js.
- */
+async function extractScannedPdfText(pageImages: Buffer[]): Promise<string> {
+  const Tesseract = await import('tesseract.js');
+  const startTime = Date.now();
+
+  const ocrPage = async (png: Buffer, pageIdx: number): Promise<string> => {
+    const worker = await Tesseract.createWorker('eng');
+    try {
+      const { data } = await worker.recognize(png);
+      console.log(`[OCR] Tesseract page ${pageIdx + 1}: ${data.text.length} chars`);
+      return data.text;
+    } finally {
+      await worker.terminate();
+    }
+  };
+
+  const pageTexts = await Promise.all(
+    pageImages.map((png, i) => ocrPage(png, i)),
+  );
+
+  console.log(`[OCR] Tesseract done in ${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+  return pageTexts.join('\n\n--- PAGE BREAK ---\n\n');
+}
+
+// ---------------------------------------------------------------------------
+// METHOD 4: Tesseract.js for images (JPG/PNG)
+// ---------------------------------------------------------------------------
+
 async function extractImageText(buffer: Buffer): Promise<string> {
   const Tesseract = await import('tesseract.js');
   const worker = await Tesseract.createWorker('eng');
-
   try {
     const { data } = await worker.recognize(buffer);
     return data.text;
@@ -57,57 +225,68 @@ async function extractImageText(buffer: Buffer): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Scanned PDF OCR via mupdf (WASM) + Tesseract.js
+// METHOD 5: Gemini Vision for single images (JPG/PNG)
 // ---------------------------------------------------------------------------
 
-/**
- * Convert each PDF page to a PNG image using mupdf (WASM), then OCR with
- * Tesseract.js. Works for scanned/image-only PDFs without native dependencies.
- */
-async function extractScannedPdfText(buffer: Buffer): Promise<string> {
-  const mupdf = await import('mupdf');
-  const Tesseract = await import('tesseract.js');
+async function extractImageWithGemini(buffer: Buffer, mimeType: string): Promise<ParsedItem[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY not set');
 
-  const doc = mupdf.Document.openDocument(buffer, 'application/pdf');
-  const pageCount = doc.countPages();
-  console.log(`[OCR] mupdf: ${pageCount} page(s) to process`);
+  const base64 = buffer.toString('base64');
 
-  const worker = await Tesseract.createWorker('eng');
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              { text: GEMINI_EXTRACTION_PROMPT },
+              { inlineData: { mimeType, data: base64 } },
+            ],
+          },
+        ],
+        generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+      }),
+    },
+  );
 
-  try {
-    const pageTexts: string[] = [];
-
-    for (let i = 0; i < pageCount; i++) {
-      const page = doc.loadPage(i);
-      // Scale 2x for better OCR accuracy
-      const pixmap = page.toPixmap(
-        [2, 0, 0, 2, 0, 0],
-        mupdf.ColorSpace.DeviceRGB,
-        false,
-        true,
-      );
-      const png = pixmap.asPNG();
-      console.log(
-        `[OCR] Page ${i + 1}/${pageCount}: ${pixmap.getWidth()}x${pixmap.getHeight()}`,
-      );
-
-      const { data } = await worker.recognize(Buffer.from(png));
-      pageTexts.push(data.text);
-    }
-
-    return pageTexts.join('\n\n--- PAGE BREAK ---\n\n');
-  } finally {
-    await worker.terminate();
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${body}`);
   }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const jsonStr = text.replace(/^```json?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  const rows: GeminiExtractedRow[] = JSON.parse(jsonStr);
+
+  return rows.map(row => {
+    const amount = typeof row.finalPrice === 'number' ? row.finalPrice
+      : typeof row.costAmount === 'number' ? row.costAmount
+      : null;
+    const cost = typeof row.costAmount === 'number' ? row.costAmount : null;
+    return {
+      date: row.date || new Date().toISOString().slice(0, 10),
+      project: row.project || '',
+      unitNo: row.unitNo || '',
+      description: row.description || 'Repair/Maintenance',
+      amount,
+      confidence: row.finalPrice != null ? 0.95 : row.costAmount != null ? 0.8 : 0.5,
+      rawLine: `[Gemini] ${row.date} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
-// Google Cloud Vision (optional, if API key is present)
+// Google Cloud Vision (optional)
 // ---------------------------------------------------------------------------
 
-/**
- * Extract text via Google Cloud Vision TEXT_DETECTION.
- */
 async function extractVisionText(buffer: Buffer): Promise<string> {
   const apiKey = process.env.GOOGLE_CLOUD_VISION_KEY!;
   const base64 = buffer.toString('base64');
@@ -118,19 +297,16 @@ async function extractVisionText(buffer: Buffer): Promise<string> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requests: [
-          {
-            image: { content: base64 },
-            features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
-          },
-        ],
+        requests: [{
+          image: { content: base64 },
+          features: [{ type: 'TEXT_DETECTION', maxResults: 1 }],
+        }],
       }),
     },
   );
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Vision API error ${response.status}: ${body}`);
+    throw new Error(`Vision API error ${response.status}: ${await response.text()}`);
   }
 
   const data = (await response.json()) as {
@@ -140,36 +316,24 @@ async function extractVisionText(buffer: Buffer): Promise<string> {
     }>;
   };
 
-  const result = data.responses[0];
-  if (result.error) {
-    throw new Error(`Vision API returned error: ${result.error.message}`);
+  if (data.responses[0].error) {
+    throw new Error(`Vision API: ${data.responses[0].error.message}`);
   }
 
-  return result.fullTextAnnotation?.text ?? '';
+  return data.responses[0].fullTextAnnotation?.text ?? '';
 }
 
 // ---------------------------------------------------------------------------
 // Mock OCR (last resort fallback)
 // ---------------------------------------------------------------------------
 
-function generateMockOcrText(filename: string): string {
-  const today = new Date();
-  const dateStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
-
-  return `REPAIR WORK ORDER
-Date: ${dateStr}
-Project: MOLEK PINE
-
-Unit: A-12-03  Description: Plumbing repair - leaking pipe under sink  RM 350.00
-Unit: B-05-11  Description: Electrical fault - replace circuit breaker  RM 580.00
-Unit: C-08-02  Description: Painting - bedroom walls repaint  RM 1,200.00
-Unit: A-07-15  Description: Air conditioning service and gas refill  RM 420.00
-Unit: D-03-09  Description: Door lock replacement  RM 180.00
-
-Total: RM 2,730.00
-
-[MOCK OCR - file: ${filename}]
-Note: Set GOOGLE_CLOUD_VISION_KEY in .env to use Google Cloud Vision`;
+function generateMockItems(): ParsedItem[] {
+  const today = new Date().toISOString().slice(0, 10);
+  return [
+    { date: today, project: 'MOLEK PINE', unitNo: 'A-12-03', description: 'Plumbing repair - leaking pipe', amount: 350, confidence: 0.5, rawLine: '[Mock]' },
+    { date: today, project: 'MOLEK PINE', unitNo: 'B-05-11', description: 'Electrical fault - circuit breaker', amount: 580, confidence: 0.5, rawLine: '[Mock]' },
+    { date: today, project: 'MOLEK PINE', unitNo: 'C-08-02', description: 'Painting - bedroom walls', amount: 1200, confidence: 0.5, rawLine: '[Mock]' },
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -177,74 +341,112 @@ Note: Set GOOGLE_CLOUD_VISION_KEY in .env to use Google Cloud Vision`;
 // ---------------------------------------------------------------------------
 
 /**
- * Run OCR on the supplied buffer using the best available method:
+ * Run OCR and return structured items.
  *
- * Priority order:
- *  1. Google Cloud Vision (if GOOGLE_CLOUD_VISION_KEY is set)
- *  2. pdf-parse for PDFs  (extracts embedded text layer — no AI needed)
- *  3. Tesseract.js for images (local neural-net OCR — no API key needed)
- *  4. Mock text (development fallback of last resort)
+ * Priority:
+ *  1. Gemini Vision API (FREE, highest accuracy — structured JSON extraction)
+ *  2. Google Cloud Vision → parseOcrText
+ *  3. pdf-parse (text-layer PDFs) → parseOcrText
+ *  4. mupdf + Tesseract.js (scanned PDFs) → parseOcrText
+ *  5. Tesseract.js (images) → parseOcrText
+ *  6. Mock fallback
  */
 async function runOcr(
   buffer: Buffer,
   mimeType: string,
   filename: string,
-): Promise<{ text: string; method: string }> {
+): Promise<{ items: ParsedItem[]; rawText: string; method: string }> {
   const isPdf = mimeType === 'application/pdf';
 
-  // 1. Google Cloud Vision (optional premium path)
+  // Render PDF pages once (shared between Gemini and Tesseract paths)
+  let pageImages: Buffer[] | null = null;
+  if (isPdf) {
+    try {
+      pageImages = await renderPdfPages(buffer);
+    } catch (err) {
+      console.error(`[OCR] mupdf render failed:`, err);
+    }
+  }
+
+  // 1. Gemini Vision — structured JSON extraction (best accuracy)
+  if (process.env.GEMINI_API_KEY) {
+    console.log(`[OCR] Using Gemini Vision for "${filename}"`);
+    try {
+      let items: ParsedItem[];
+      if (isPdf && pageImages) {
+        items = await extractWithGemini(pageImages);
+      } else {
+        items = await extractImageWithGemini(buffer, mimeType);
+      }
+      if (items.length > 0) {
+        const rawText = items.map(i =>
+          `${i.date} | ${i.project} | ${i.unitNo} | ${i.description} | RM ${i.amount ?? '?'}`
+        ).join('\n');
+        return { items, rawText, method: 'gemini-vision' };
+      }
+      console.warn(`[OCR] Gemini returned 0 items for "${filename}"`);
+    } catch (err) {
+      console.error(`[OCR] Gemini failed for "${filename}":`, err);
+    }
+  }
+
+  // 2. Google Cloud Vision → text → parse
   if (process.env.GOOGLE_CLOUD_VISION_KEY) {
     console.log(`[OCR] Using Google Cloud Vision for "${filename}"`);
-    const text = await extractVisionText(buffer);
-    return { text, method: 'google-vision' };
+    try {
+      const text = await extractVisionText(buffer);
+      if (text.trim().length > 50) {
+        return { items: parseOcrText(text).items, rawText: text, method: 'google-vision' };
+      }
+    } catch (err) {
+      console.warn(`[OCR] Cloud Vision failed:`, err);
+    }
   }
 
-  // 2. pdf-parse — fast, no AI, works on PDFs with a text layer
+  // 3. pdf-parse — text-layer PDFs only
   if (isPdf) {
-    console.log(`[OCR] Using pdf-parse for "${filename}"`);
+    console.log(`[OCR] Trying pdf-parse for "${filename}"`);
     try {
       const text = await extractPdfText(buffer);
-      if (text.trim().length > 20) {
-        // Meaningful text was found in the PDF
-        return { text, method: 'pdf-parse' };
+      const meaningful = text.replace(/[\s\r\n\t\f\v\x00-\x1f]+/g, '');
+      console.log(`[OCR] pdf-parse: meaningful=${meaningful.length} chars`);
+      if (meaningful.length > 50) {
+        return { items: parseOcrText(text).items, rawText: text, method: 'pdf-parse' };
       }
-      console.log(
-        `[OCR] pdf-parse returned little/no text for "${filename}" — falling back to Tesseract`,
-      );
     } catch (err) {
-      console.warn(`[OCR] pdf-parse failed for "${filename}":`, err);
+      console.warn(`[OCR] pdf-parse failed:`, err);
     }
   }
 
-  // 3. Scanned PDF → mupdf renders pages to images → Tesseract OCR
-  if (isPdf) {
-    console.log(`[OCR] Using mupdf + Tesseract.js for scanned PDF "${filename}"`);
+  // 4. mupdf + Tesseract.js — scanned PDFs
+  if (isPdf && pageImages) {
+    console.log(`[OCR] Using Tesseract.js for scanned PDF "${filename}"`);
     try {
-      const text = await extractScannedPdfText(buffer);
-      if (text.trim().length > 20) {
-        return { text, method: 'mupdf+tesseract' };
+      const text = await extractScannedPdfText(pageImages);
+      const meaningful = text.replace(/[\s\r\n\t\f\v]+/g, '');
+      console.log(`[OCR] Tesseract: meaningful=${meaningful.length} chars`);
+      if (meaningful.length > 20) {
+        return { items: parseOcrText(text).items, rawText: text, method: 'mupdf+tesseract' };
       }
     } catch (err) {
-      console.warn(`[OCR] mupdf+Tesseract failed for "${filename}":`, err);
+      console.error(`[OCR] Tesseract failed:`, err);
     }
   }
 
-  // 4. Tesseract.js — for image files (JPG/PNG)
+  // 5. Tesseract.js — image files
   if (!isPdf) {
-    console.log(`[OCR] Using Tesseract.js for "${filename}"`);
+    console.log(`[OCR] Using Tesseract.js for image "${filename}"`);
     try {
       const text = await extractImageText(buffer);
-      return { text, method: 'tesseract' };
+      return { items: parseOcrText(text).items, rawText: text, method: 'tesseract' };
     } catch (err) {
-      console.warn(`[OCR] Tesseract.js failed for "${filename}":`, err);
+      console.warn(`[OCR] Tesseract failed:`, err);
     }
   }
 
-  // 5. Mock fallback
-  console.warn(
-    `[OCR] All methods failed or unavailable for "${filename}" — using mock data`,
-  );
-  return { text: generateMockOcrText(filename), method: 'mock' };
+  // 6. Mock fallback
+  console.warn(`[OCR] All methods failed — using mock data`);
+  return { items: generateMockItems(), rawText: '[Mock OCR data]', method: 'mock' };
 }
 
 // ---------------------------------------------------------------------------
@@ -263,13 +465,7 @@ async function ensureUploadsDir(): Promise<void> {
 // Route handler
 // ---------------------------------------------------------------------------
 
-/**
- * POST /api/ocr
- * Accepts multipart/form-data with a 'file' field.
- * Returns extracted text and parsed items.
- */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  // Auth check
   const session = await auth();
   if (!session?.user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -279,10 +475,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     formData = await request.formData();
   } catch {
-    return NextResponse.json(
-      { error: 'Invalid multipart/form-data request' },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
   const file = formData.get('file');
@@ -291,22 +484,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const uploadedFile = file as File;
-
-  // Validate MIME type
   const mimeType = uploadedFile.type;
+
   if (!ALLOWED_TYPES[mimeType]) {
     return NextResponse.json(
-      {
-        error: `Unsupported file type: ${mimeType}. Allowed: PDF, JPEG, PNG`,
-      },
+      { error: `Unsupported file type: ${mimeType}` },
       { status: 415 },
     );
   }
 
-  // Validate file size
   if (uploadedFile.size > MAX_FILE_SIZE_BYTES) {
     return NextResponse.json(
-      { error: 'File too large. Maximum size is 10 MB' },
+      { error: 'File too large. Maximum 10 MB' },
       { status: 413 },
     );
   }
@@ -315,36 +504,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const fileType = ext === 'pdf' ? 'pdf' : 'image';
   const safeFilename = `${Date.now()}-${uploadedFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-  // Read file into buffer
   const arrayBuffer = await uploadedFile.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  // Save file to disk
   await ensureUploadsDir();
   const filePath = path.join(UPLOADS_DIR, safeFilename);
   await fs.writeFile(filePath, buffer);
 
-  // Run OCR
-  let ocrResult: { text: string; method: string };
+  let result: { items: ParsedItem[]; rawText: string; method: string };
   try {
-    ocrResult = await runOcr(buffer, mimeType, uploadedFile.name);
+    result = await runOcr(buffer, mimeType, uploadedFile.name);
   } catch (ocrError) {
     await fs.unlink(filePath).catch(() => null);
     return NextResponse.json(
-      { error: `OCR processing failed: ${String(ocrError)}` },
+      { error: `OCR failed: ${String(ocrError)}` },
       { status: 500 },
     );
   }
 
-  const { text: rawText, method: ocrMethod } = ocrResult;
-  console.log(
-    `[OCR] Method="${ocrMethod}" extracted ${rawText.length} chars from "${uploadedFile.name}"`,
-  );
+  const { items, rawText, method: ocrMethod } = result;
+  console.log(`[OCR] "${ocrMethod}" → ${items.length} items from "${uploadedFile.name}"`);
 
-  // Parse OCR text into structured data
-  const parseResult = parseOcrText(rawText);
-
-  // Persist to DB
   const userId = session.user?.email ?? 'unknown';
   const insertResult = db
     .insert(ocrUploads)
@@ -352,7 +532,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       filename: safeFilename,
       fileType,
       rawText,
-      parsedData: JSON.stringify(parseResult.items),
+      parsedData: JSON.stringify(items),
       status: 'parsed',
       createdBy: userId,
     })
@@ -363,7 +543,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     uploadId: insertResult.id,
     filename: safeFilename,
     rawText,
-    items: parseResult.items,
+    items,
     isMock: ocrMethod === 'mock',
     ocrMethod,
   });

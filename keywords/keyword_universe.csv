@@ -1,0 +1,82 @@
+keyword,category,lang,type,rationale,metrics_proxy
+Model Context Protocol,core_keywords,en,core,MCP全体の基盤プロトコル。GitHub 82.7k stars / 4420+ repos,GitHub Stars: 82700
+MCP server,core_keywords,en,core,18964サーバーがglama.aiに登録済み。エコシステムの基本単位,glama.ai登録数: 18964
+Claude Skills,core_keywords,en,core,Anthropic公式のスキル機能。Claude Desktopと連携,N/A
+API marketplace,core_keywords,en,core,ツール統合の流通プラットフォーム概念,RapidAPI MAU: 5M+
+extension ecosystem,core_keywords,en,core,VS Code型拡張エコシステムとMCPの統合モデル,VS Code Extensions: 60k+
+tool aggregation,core_keywords,en,core,複数MCPを集約するAggregatorパターン,GitHub trend
+AI agent orchestration,core_keywords,en,core,マルチエージェント協調の基盤概念。Ruflo 20.5k stars,Stars: 20500
+MCP registry,core_keywords,both,core,公式MCPレジストリ。ツール発見の中央集権的インフラ,glama.ai: 18964
+fastmcp,related,en,related,PythonicなMCPサーバー構築フレームワーク。23.6k stars,GitHub Stars: 23600
+TypeScript MCP SDK,related,en,related,MCP実装の主力言語。1473 repos,Repos: 1473
+Python MCP SDK,related,en,related,MCP実装第2位言語。1334 repos,Repos: 1334
+Anthropic Claude API,related,en,related,MCP統合の基盤LLM API,N/A
+OpenAI function calling,related,en,related,MCP対抗規格。比較・互換性が重要,N/A
+LangChain tools,related,en,related,エージェントツール統合の先行実装,GitHub Stars: 95k+
+LlamaIndex,related,en,related,RAG+ツール統合のフレームワーク,GitHub Stars: 38k+
+tool use,related,en,related,LLMのツール利用パターンの総称,N/A
+JSON-RPC,related,en,related,MCPのトランスポート層プロトコル,N/A
+remote MCP server,related,en,related,glama.aiで8199件。クラウド展開型が主流化,Count: 8199
+glama.ai,related,en,related,最大のMCPディレクトリサービス（18964登録）,Servers: 18964
+tool discovery,related,both,related,AIがツールを自動発見するメカニズム,N/A
+Firecrawl,related,en,related,WebスクレイピングMCP。人気実装の代表例,GitHub Stars: 25k+
+Unity MCP,related,en,related,ゲーム開発ツールチェーンへのMCP統合。6.9k stars,Stars: 6900
+MCP自動化,compound,ja,compound,MCPを使ったワークフロー自動化。RPA代替として注目,N/A
+AI tool discovery,compound,en,compound,AIによるツール自動発見・選択システム,N/A
+API統合パイプライン,compound,ja,compound,複数APIを連結するデータパイプライン設計,N/A
+MCP server aggregator,compound,en,compound,複数MCPを単一エンドポイントに束ねるパターン,N/A
+マルチエージェント統合,compound,ja,compound,複数AIエージェントの協調・オーケストレーション,N/A
+tool orchestration layer,compound,en,compound,ツール呼び出しを抽象化するミドルウェア層,N/A
+インテリジェンス統合システム,compound,ja,compound,MCP+Skills+APIを横断する統合知識システム,N/A
+remote MCP deployment,compound,en,compound,クラウドでMCPサーバーを運用するパターン,N/A
+AI拡張機能マーケット,compound,ja,compound,AI向け拡張機能の流通・発見・課金プラットフォーム,N/A
+MCP security audit,compound,en,compound,MCPサーバーのセキュリティ評価,N/A
+Claude Desktop integration,compound,en,compound,Claude DesktopへのMCP統合実装パターン,N/A
+skill composition,compound,en,compound,複数スキルを組み合わせた高次機能の構築,N/A
+ツールチェーン自動生成,compound,ja,compound,AIがユーザー要求からツールチェーンを自動構築,N/A
+MCP middleware layer,compound,en,compound,MCPとアプリの間の変換・認証・監視層,N/A
+MCPエコシステム分析,compound,ja,compound,18964サーバーのカテゴリ分布・成長率分析,N/A
+ツールマーケットプレイス設計,compound,ja,compound,発見・評価・課金を含むツール流通設計,N/A
+fastmcp framework,rising_2026,en,rising,23.6k stars。PythonicなMCP開発の標準フレームワーク化,Stars: 23600
+agentic workflow,rising_2026,en,rising,自律型AIワークフローの実装パターン。2025年の主要トレンド,Google Trend急上昇
+MCP remote server,rising_2026,en,rising,ローカルからクラウド展開へのシフト（8199件）,Count成長率+40%
+multi-agent swarm,rising_2026,en,rising,Ruflo(20.5k)等で具現化した群知能型エージェント,Stars: 20500
+AI tool monetization,rising_2026,en,rising,MCPサーバーの商業化・収益化モデルの確立,新興
+MCP品質評価,rising_2026,ja,rising,glama.aiがセキュリティ・ライセンス評価を実装。標準化の兆し,N/A
+Claude computer use,rising_2026,en,rising,コンピュータ操作エージェントのMCP統合,Anthropic発表後急伸
+tool calling standardization,rising_2026,en,rising,OAI/Anthropic/Googleの関数呼び出し規格統一動向,N/A
+Microsoft MCP curriculum,rising_2026,en,rising,mcp-for-beginners 15.3k stars。エンタープライズ普及の証左,Stars: 15300
+AIエージェント監視,rising_2026,ja,rising,エージェントの動作ログ・監査トレースの需要急増,N/A
+Google Workspace MCP,rising_2026,en,rising,エンタープライズSaaS統合の主流ルートとして成長,N/A
+Unity game dev MCP,rising_2026,en,rising,ゲーム開発ドメインへの拡張（6.9k stars）,Stars: 6900
+業界特化MCPサーバー,niche,ja,niche,医療・法律・金融向けドメイン特化。競合少なく差別化可能,N/A
+MCP監査ツール,niche,ja,niche,MCPサーバーのコンプライアンス・セキュリティ監査特化,N/A
+オフライン対応MCP,niche,ja,niche,ネットワーク非依存のローカルMCP実装。エアギャップ環境向け,N/A
+MCP cost optimization,niche,en,niche,API呼び出しコスト削減に特化したMCPプロキシ設計,N/A
+legacy system MCP bridge,niche,en,niche,既存基幹システム（SAP/Oracle等）とMCPの橋渡し,N/A
+MCP multi-tenancy,niche,en,niche,企業向けマルチテナントMCPサーバー設計,N/A
+ローコードMCP構築,niche,ja,niche,ノーコード/ローコードでMCPサーバーを生成する需要,N/A
+エッジ展開MCP,niche,ja,niche,IoT/エッジデバイス上のMCPサーバー軽量実装,N/A
+AIツール使用量分析,niche,ja,niche,MCPツール呼び出しの利用統計・最適化分析,N/A
+MCP test framework,niche,en,niche,MCPサーバーの自動テスト・モック生成,MCP Inspector派生
+財務向けMCPサーバー,niche,ja,niche,経理・請求書処理特化のMCP実装（本プロジェクト関連）,N/A
+compliance MCP,niche,en,niche,規制対応・監査証跡生成に特化したMCP,N/A
+TypeScript,tech_stack,en,tech,MCP実装の主力言語（GitHub 1473 repos）,Repos: 1473
+Python,tech_stack,en,tech,MCP実装第2位（1334 repos）。ML連携も容易,Repos: 1334
+fastmcp library,tech_stack,en,tech,23.6k starsのMCP構築フレームワーク,Stars: 23600
+Google Cloud Run,tech_stack,en,tech,サーバーレスMCPホスティング,N/A
+Cloudflare Workers,tech_stack,en,tech,エッジでのMCPサーバーホスティング,N/A
+PostgreSQL,tech_stack,en,tech,Anthropic公式pre-builtサーバーに含まれる,N/A
+Redis,tech_stack,en,tech,MCPセッション管理・キャッシュレイヤー,N/A
+Zod,tech_stack,en,tech,TypeScript MCP実装でのスキーマ検証標準,N/A
+Docker,tech_stack,en,tech,MCPサーバーのコンテナ化・分離実行,N/A
+Swagger/OpenAPI,tech_stack,en,tech,API定義からMCPサーバーを自動生成するパターン,N/A
+MCP filesystem server,mcp_skills_needed,en,mcp,ファイルシステム操作の基盤MCP（Anthropic公式）,公式提供
+MCP memory server,mcp_skills_needed,en,mcp,知識グラフベースの永続メモリ（Anthropic公式）,公式提供
+MCP git server,mcp_skills_needed,en,mcp,リポジトリ操作・コード検索（Anthropic公式）,公式提供
+Brave Search MCP,mcp_skills_needed,en,mcp,Web検索統合。glama.aiトップ掲載,登録数上位
+Notion MCP server,mcp_skills_needed,en,mcp,ドキュメント管理・メモ保存,登録数上位
+GitHub MCP server,mcp_skills_needed,en,mcp,PR・Issue・コード操作の自動化,エンタープライズ標準
+Firecrawl MCP,mcp_skills_needed,en,mcp,Webスクレイピング・コンテンツ収集,Stars: 25k+
+Sequential Thinking MCP,mcp_skills_needed,en,mcp,複雑な問題の反射的思考プロセス（Anthropic公式）,公式提供
+Playwright MCP,mcp_skills_needed,en,mcp,ブラウザ自動化・E2Eテスト,ローカル確認済
