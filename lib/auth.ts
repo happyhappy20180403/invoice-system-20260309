@@ -17,7 +17,7 @@ export const authConfig: NextAuthConfig = {
       clientSecret: process.env.XERO_CLIENT_SECRET!,
       authorization: {
         params: {
-          scope: 'openid profile email offline_access accounting.transactions accounting.contacts accounting.settings',
+          scope: 'openid profile email offline_access accounting.invoices accounting.contacts accounting.settings.read',
         },
       },
       profile(profile) {
