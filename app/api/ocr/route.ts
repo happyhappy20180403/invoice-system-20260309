@@ -6,6 +6,41 @@ import { parseOcrText, type ParsedItem } from '@/lib/ocr/parser';
 import path from 'path';
 import fs from 'fs/promises';
 
+// ---------------------------------------------------------------------------
+// Description post-processing (safety net for scan artifact corrections)
+// ---------------------------------------------------------------------------
+
+const DESCRIPTION_CORRECTIONS: Record<string, string> = {
+  'BATROOM': 'BATHROOM',
+  'BATHROM': 'BATHROOM',
+  'TOILE ': 'TOILET ',
+  'CEILNG': 'CEILING',
+  'CEILLING': 'CEILING',
+  'ATER HEATER': 'WATER HEATER',
+  'ENRANCE': 'ENTRANCE',
+  'ENTRACE': 'ENTRANCE',
+  'WWINDOW': 'WINDOW',
+  'WWATER': 'WATER',
+  'VREMOTE': 'REMOTE',
+  'KITHCEN': 'KITCHEN',
+  'KTICHEN': 'KITCHEN',
+  'DINNING': 'DINING',
+};
+
+function correctDescription(desc: string): string {
+  let fixed = desc;
+  for (const [wrong, right] of Object.entries(DESCRIPTION_CORRECTIONS)) {
+    fixed = fixed.replace(new RegExp(wrong, 'gi'), right);
+  }
+  // Expand truncated words at end
+  fixed = fixed.replace(/,\s*REP\s*$/i, ', REPAIR');
+  fixed = fixed.replace(/\s+REP\s*$/i, ' REPAIR');
+  fixed = fixed.replace(/,\s*REPL\s*$/i, ', REPLACE');
+  // Remove trailing comma/period
+  fixed = fixed.replace(/[,.\s]+$/, '');
+  return fixed;
+}
+
 // Allowed MIME types and their extensions
 const ALLOWED_TYPES: Record<string, string> = {
   'application/pdf': 'pdf',
@@ -59,30 +94,52 @@ interface GeminiExtractedRow {
   finalPrice: number | null;
 }
 
-const GEMINI_EXTRACTION_PROMPT = `You are a precise data extraction engine. Extract ALL repair/maintenance line items from this scanned repair work order table.
+const GEMINI_EXTRACTION_PROMPT = `You are a precise data extraction engine for property repair work orders. Read the scanned table carefully, character by character, and extract ALL line items.
 
-The table has these columns (left to right):
+TABLE COLUMNS (left to right):
 1. Date (DD/MM/YYYY)
 2. Project name (abbreviations: MP4=MOLEK PINE 4, MP3=MOLEK PINE 3, SUASANA, PONDER OSA=PONDEROSA, SUMMER PLACE, IMPERIA, MOLEK PULAI)
 3. Unit number (e.g. B-10-03, 14-01, B-13A-06)
-4. Description of repair work (may span 2 lines)
+4. Description of repair work (may span 2 lines in the table — merge into one)
 5. Payment method (internet banking or petty cash)
 6. Receipt No / Amount columns (printed numbers)
 7. Tracking column
-8. **"Final Price (Claim to Customer) (RM)"** — the RIGHTMOST column. These are often HANDWRITTEN numbers. This is the most important amount.
+8. "Final Price (Claim to Customer) (RM)" — the RIGHTMOST column with HANDWRITTEN numbers
+
+VALID REPAIR VOCABULARY (use these exact words when correcting descriptions):
+BATHROOM, BEDROOM, KITCHEN, LIVING ROOM, DINING ROOM, ENTRANCE, TOILET, CEILING, WINDOW, DOOR,
+WATER HEATER, COOKER HOOD, AIRCON, COMPRESSOR, WASHING MACHINE, CEILING FAN, SHOWER, BATHTUB,
+PIPE, LEAKAGE, REPAIR, REPLACE, CHANGE, INSTALL, SWITCH, VALVE, PUMP, FLUSH, LOCK, REMOTE,
+DIGITAL LOCK, WATERPROOFING, STICKER, CABINET, MATTRESS, LIGHTS, PLUG, RUBBER, COVER, GLASS,
+FLOOR TRAP, SINK, CLOG, BLOCK, BURST, STAIN, TOUCH UP, ACCESS CARD, BEDSHEETS, STOPPER, TAP
+
+SCAN ARTIFACT CORRECTIONS (always apply these):
+- BATROOM / BATHROM → BATHROOM
+- TOILE → TOILET
+- CEILNG / CEILLING → CEILING
+- ATER HEATER → WATER HEATER
+- ENRANCE / ENTRACE → ENTRANCE
+- WWINDOW → WINDOW
+- WWATER → WATER
+- VREMOTE → REMOTE
+- KITHCEN / KTICHEN → KITCHEN
+- DINNING → DINING
+- Truncated "REP" at end of description → "REPAIR"
+- Truncated "REPL" at end → "REPLACE"
+- Remove stray punctuation at end (trailing commas, periods)
 
 CRITICAL RULES:
 - Extract EVERY row. Do not skip any.
-- "costAmount" = the printed Internet Banking (RM) amount (column 6)
-- "finalPrice" = the HANDWRITTEN amount in the rightmost "Final Price (Claim to Customer)" column. READ THE HANDWRITING CAREFULLY.
-- If finalPrice is blank/unreadable for a row, set it to null.
-- Some descriptions span 2 lines — merge them into one description.
+- "costAmount" = the printed Internet Banking (RM) amount
+- "finalPrice" = the HANDWRITTEN amount in the rightmost "Final Price (Claim to Customer)" column. Read handwriting carefully.
+- If finalPrice is blank/unreadable, set it to null.
+- Descriptions must use corrected vocabulary above. Fix ALL scan typos.
 - Expand project abbreviations.
 - Date format: YYYY-MM-DD
 - Return ONLY valid JSON array. No markdown, no explanation.
 
 Output format:
-[{"date":"2026-02-03","project":"PONDEROSA","unitNo":"B-10-03","description":"Cooker hood repair","costAmount":740,"finalPrice":1180},...]`;
+[{"date":"2026-02-03","project":"PONDEROSA","unitNo":"B-10-03","description":"COOKER HOOD REPAIR","costAmount":740,"finalPrice":1180},...]`;
 
 async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -145,16 +202,16 @@ async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
     }
 
     for (const row of rows) {
-      // Use finalPrice (claim to customer) if available, otherwise fall back to costAmount
       const amount = typeof row.finalPrice === 'number' ? row.finalPrice
         : typeof row.costAmount === 'number' ? row.costAmount
         : null;
       const cost = typeof row.costAmount === 'number' ? row.costAmount : null;
+      const desc = correctDescription(row.description || 'Repair/Maintenance');
       allItems.push({
         date: row.date || new Date().toISOString().slice(0, 10),
         project: row.project || '',
         unitNo: row.unitNo || '',
-        description: row.description || 'Repair/Maintenance',
+        description: desc,
         amount,
         confidence: row.finalPrice != null ? 0.95 : row.costAmount != null ? 0.8 : 0.5,
         rawLine: `[Gemini] ${row.date} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
@@ -271,11 +328,12 @@ async function extractImageWithGemini(buffer: Buffer, mimeType: string): Promise
       : typeof row.costAmount === 'number' ? row.costAmount
       : null;
     const cost = typeof row.costAmount === 'number' ? row.costAmount : null;
+    const desc = correctDescription(row.description || 'Repair/Maintenance');
     return {
       date: row.date || new Date().toISOString().slice(0, 10),
       project: row.project || '',
       unitNo: row.unitNo || '',
-      description: row.description || 'Repair/Maintenance',
+      description: desc,
       amount,
       confidence: row.finalPrice != null ? 0.95 : row.costAmount != null ? 0.8 : 0.5,
       rawLine: `[Gemini] ${row.date} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,

@@ -1,0 +1,434 @@
+[
+  {
+    "date": "2026-02-03",
+    "project": "PONDEROSA",
+    "unitNo": "B-10-03",
+    "description": "COOKER HOOD REPAIR",
+    "costAmount": 740,
+    "finalPrice": 1480
+  },
+  {
+    "date": "2026-02-03",
+    "project": "SUASANA",
+    "unitNo": "14-01",
+    "description": "2 UNIT AIRCON REPLACEMENT REPAIR",
+    "costAmount": 2600,
+    "finalPrice": 5200
+  },
+  {
+    "date": "2026-02-03",
+    "project": "SUASANA",
+    "unitNo": "09-06",
+    "description": "CEILING PIPE LEAKAGE REPAIR",
+    "costAmount": 250,
+    "finalPrice": 500
+  },
+  {
+    "date": "2026-02-03",
+    "project": "SUMMER PLACE",
+    "unitNo": "33-12",
+    "description": "BATHROOM DOOR REPLACEMENT, REPAIR",
+    "costAmount": 750,
+    "finalPrice": 1500
+  },
+  {
+    "date": "2026-02-03",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-09-04",
+    "description": "BATHROOM SWITCH WIRE REPAIR",
+    "costAmount": 350,
+    "finalPrice": 700
+  },
+  {
+    "date": "2026-02-04",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-30-04",
+    "description": "WASHING MACHINE PIPE REPAIR",
+    "costAmount": 30,
+    "finalPrice": 80
+  },
+  {
+    "date": "2026-02-04",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-33-07",
+    "description": "COOKER HOOD LIGHTS REPAIR",
+    "costAmount": 26.3,
+    "finalPrice": 80
+  },
+  {
+    "date": "2026-02-04",
+    "project": "SUASANA",
+    "unitNo": "13-10",
+    "description": "CABINET STICKER REPAIR",
+    "costAmount": 5,
+    "finalPrice": 50
+  },
+  {
+    "date": "2026-02-04",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-05-08",
+    "description": "SINK CLOG REPAIR",
+    "costAmount": 50,
+    "finalPrice": 100
+  },
+  {
+    "date": "2026-02-04",
+    "project": "SUASANA",
+    "unitNo": "13-10",
+    "description": "ACCESS CARD REPAIR",
+    "costAmount": 150,
+    "finalPrice": null
+  },
+  {
+    "date": "2026-02-09",
+    "project": "SUMMER PLACE",
+    "unitNo": "33-12",
+    "description": "KITCHEN DRAINAGE BLOCK REPAIR",
+    "costAmount": 260,
+    "finalPrice": 520
+  },
+  {
+    "date": "2026-02-09",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-16-07",
+    "description": "BATHROOM WATER HEATER PIPE REPAIR",
+    "costAmount": 480,
+    "finalPrice": 960
+  },
+  {
+    "date": "2026-02-09",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-16-07",
+    "description": "REPLACE WATER HEATER TANK, REPAIR",
+    "costAmount": 1600,
+    "finalPrice": 3800
+  },
+  {
+    "date": "2026-02-09",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-33-07",
+    "description": "INSTALL NEW AIRCON DINING ROOM REQUEST ITEM",
+    "costAmount": 1450,
+    "finalPrice": 2900
+  },
+  {
+    "date": "2026-02-09",
+    "project": "IMPERIA",
+    "unitNo": "B-13A-06",
+    "description": "TOILET FLOOR TRAP PIPE REPAIRS",
+    "costAmount": 1100,
+    "finalPrice": 2200
+  },
+  {
+    "date": "2026-02-11",
+    "project": "PONDEROSA",
+    "unitNo": "B-06-03",
+    "description": "LIVING ROOM AIRCON COMPRESSOR REPAIR",
+    "costAmount": 350,
+    "finalPrice": 700
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-07-04",
+    "description": "CHANGE TOILET SEAT REPAIR",
+    "costAmount": 400,
+    "finalPrice": 800
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-07-04",
+    "description": "BATHROOM CEILING LEAKAGE REPAIR",
+    "costAmount": 350,
+    "finalPrice": 700
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-11-03",
+    "description": "ENTRANCE WATER PIPE BURST REPAIR",
+    "costAmount": 750,
+    "finalPrice": 1500
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-30-04",
+    "description": "BATHTUB WATER STOPPER REPAIR",
+    "costAmount": 400,
+    "finalPrice": 800
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-30-04",
+    "description": "BATHROOM CEILING WATER LEAKS REPAIR",
+    "costAmount": 350,
+    "finalPrice": 700
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-08-07",
+    "description": "CHANGE KITCHEN SINK WATER TAP, REPAIR",
+    "costAmount": 360,
+    "finalPrice": 720
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-19-02",
+    "description": "REPAIR WATER HEATER PIPE",
+    "costAmount": 280,
+    "finalPrice": 560
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-13A-01",
+    "description": "BATHROOM CEILING STAIN AND LEAKAGE REPAIR",
+    "costAmount": 450,
+    "finalPrice": 900
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-11-01",
+    "description": "BEDROOM WINDOW EDGE WALL REPAIR",
+    "costAmount": 250,
+    "finalPrice": 500
+  },
+  {
+    "date": "2026-02-11",
+    "project": "SUASANA",
+    "unitNo": "20-13",
+    "description": "TOUCH UP BATHROOM CEILING, REPAIR",
+    "costAmount": 150,
+    "finalPrice": 300
+  },
+  {
+    "date": "2026-02-11",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-28-03",
+    "description": "WATER HEATER TANK REPAIR",
+    "costAmount": 1900,
+    "finalPrice": 3000
+  },
+  {
+    "date": "2026-02-12",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-28-03",
+    "description": "ENTRANCE DIGITAL LOCK REPAIR",
+    "costAmount": 570,
+    "finalPrice": 1140
+  },
+  {
+    "date": "2026-02-13",
+    "project": "SUMMER PLACE",
+    "unitNo": "13A-07",
+    "description": "ROOM 2 CEILING FAN REPAIR",
+    "costAmount": 55,
+    "finalPrice": 120
+  },
+  {
+    "date": "2026-02-16",
+    "project": "MOLEK PULAI",
+    "unitNo": "B-23A-02",
+    "description": "WASHING MACHINE PIPE REPAIR",
+    "costAmount": 50,
+    "finalPrice": 100
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-03A-06",
+    "description": "4PCS LIGHTS REPAIR",
+    "costAmount": 104,
+    "finalPrice": 220
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-28-07",
+    "description": "3PCS LIGHT REPAIR",
+    "costAmount": 78,
+    "finalPrice": 160
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-27-08",
+    "description": "3PCS LIGHT REPAIR",
+    "costAmount": 78,
+    "finalPrice": 160
+  },
+  {
+    "date": "2026-02-23",
+    "project": "SUMMER PLACE",
+    "unitNo": "13A-07",
+    "description": "CEILING FAN REMOTE REPAIR",
+    "costAmount": 55,
+    "finalPrice": 200
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-28-07",
+    "description": "REPAIR TV CABINET",
+    "costAmount": 250,
+    "finalPrice": 500
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-28-07",
+    "description": "REPAIR KITCHEN WINDOW LOCK",
+    "costAmount": 150,
+    "finalPrice": 300
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-26-03",
+    "description": "CHANGE TOILET FLUSH PUMP REPAIR",
+    "costAmount": 280,
+    "finalPrice": 560
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-26-03",
+    "description": "CHANGE CEILING FAN SWITCH REPAIR",
+    "costAmount": 80,
+    "finalPrice": 160
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-30-01",
+    "description": "REPLACE TOILET SEAT COVER",
+    "costAmount": 400,
+    "finalPrice": 1000
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-30-01",
+    "description": "TOILET SHOWER GLASS RUBBER REPAIR",
+    "costAmount": 180,
+    "finalPrice": 560
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-09-04",
+    "description": "CHANGE TOILET FLUSH PUMP REPAIR",
+    "costAmount": 280,
+    "finalPrice": 560
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-09-04",
+    "description": "CHANGE WINDOW LOCK REPAIR",
+    "costAmount": 150,
+    "finalPrice": 300
+  },
+  {
+    "date": "2026-02-23",
+    "project": "SUASANA",
+    "unitNo": "09-13",
+    "description": "CHANGE TOILET WATER VALVE REPAIR",
+    "costAmount": 320,
+    "finalPrice": 650
+  },
+  {
+    "date": "2026-02-23",
+    "project": "SUASANA",
+    "unitNo": "15-11",
+    "description": "WATER HEATER TANK REPAIR",
+    "costAmount": 700,
+    "finalPrice": 1400
+  },
+  {
+    "date": "2026-02-23",
+    "project": "PONDEROSA",
+    "unitNo": "B-06-03",
+    "description": "WASHING MACHINE SWITCH COVER REPAIR",
+    "costAmount": 30,
+    "finalPrice": 60
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-31-02",
+    "description": "SINK PIPE RUBBER REPAIR",
+    "costAmount": 61,
+    "finalPrice": 125
+  },
+  {
+    "date": "2026-02-25",
+    "project": "SUASANA",
+    "unitNo": "17-07",
+    "description": "BATHROOM FLOOR WATERPROOFING REPAIR",
+    "costAmount": 2200,
+    "finalPrice": 4400
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-18-02",
+    "description": "KITCHEN SINK REPAIR",
+    "costAmount": 700,
+    "finalPrice": 1400
+  },
+  {
+    "date": "2026-02-23",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-18-02",
+    "description": "SHOWER GLASS RUBBER REPAIR",
+    "costAmount": 180,
+    "finalPrice": 360
+  },
+  {
+    "date": "2026-02-25",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-18-02",
+    "description": "3UNIT MATTRESS REQUEST ITEM",
+    "costAmount": 2897,
+    "finalPrice": 5800
+  },
+  {
+    "date": "2026-02-27",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-18-02",
+    "description": "LIGHTS REPAIR",
+    "costAmount": 51,
+    "finalPrice": 120
+  },
+  {
+    "date": "2026-02-27",
+    "project": "MOLEK PINE 3",
+    "unitNo": "B-18-02",
+    "description": "BEDSHEETS COVER SET REQUEST",
+    "costAmount": 463,
+    "finalPrice": 930
+  },
+  {
+    "date": "2026-02-27",
+    "project": "MOLEK PINE 4",
+    "unitNo": "B-13A-01",
+    "description": "PLUG REPAIR",
+    "costAmount": 13,
+    "finalPrice": 60
+  },
+  {
+    "date": "2026-02-27",
+    "project": "SUASANA",
+    "unitNo": "15-11",
+    "description": "BATTERY REMOTE REPAIR",
+    "costAmount": 11,
+    "finalPrice": 30
+  }
+]
