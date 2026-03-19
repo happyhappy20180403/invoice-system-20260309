@@ -4,15 +4,6 @@ import { useState } from 'react';
 import { createInvoiceAction } from '@/app/actions/invoice';
 import type { PreviewData } from './InvoiceDashboard';
 
-function isoToMY(iso: string): string {
-  const p = iso.split('-');
-  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
-}
-function myToIso(my: string): string {
-  const p = my.split('/');
-  return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : my;
-}
-
 interface Props {
   data: PreviewData;
   onBack: () => void;
@@ -103,7 +94,7 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
       <div className="mb-6 rounded-lg bg-gray-50 p-4">
         <h3 className="mb-2 text-sm font-semibold text-gray-500 uppercase">Input</h3>
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <div><span className="font-medium">Date:</span> {data.date.split('-').reverse().join('/')}</div>
+          <div><span className="font-medium">Date:</span> {data.date}</div>
           <div><span className="font-medium">Project:</span> {data.project}</div>
           <div><span className="font-medium">Unit No:</span> {data.unitNo}</div>
           <div><span className="font-medium">Price:</span> MYR {data.finalPrice.toFixed(2)}</div>
@@ -198,8 +189,8 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
             <label className="mb-1 block text-xs font-medium text-gray-500">Due Date</label>
             <input
               type="text"
-              value={isoToMY(formState.dueDate)}
-              onChange={e => setFormState(s => ({ ...s, dueDate: myToIso(e.target.value) }))}
+              value={formState.dueDate}
+              onChange={e => setFormState(s => ({ ...s, dueDate: e.target.value }))}
               placeholder="DD/MM/YYYY"
               className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
             />

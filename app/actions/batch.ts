@@ -53,6 +53,25 @@ export interface BatchSubmitResult {
   error?: string;
 }
 
+/** Convert DD/MM/YYYY to YYYY-MM-DD for Xero API */
+function toIsoDate(dmyDate: string): string {
+  const p = dmyDate.split('/');
+  if (p.length === 3) return `${p[2]}-${p[1]}-${p[0]}`;
+  // Already ISO or other format — return as-is
+  return dmyDate;
+}
+
+/** Calculate last day of month from DD/MM/YYYY, return DD/MM/YYYY */
+function lastDayOfMonth(dmyDate: string): string {
+  const p = dmyDate.split('/');
+  if (p.length === 3) {
+    const [, mm, yyyy] = p.map(Number);
+    const lastDay = new Date(yyyy, mm, 0).getDate();
+    return `${String(lastDay).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
+  }
+  return dmyDate;
+}
+
 // batchMatchAction: 複数行を一括ファジー検索
 export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMatch[]> {
   const session = await auth();
@@ -63,11 +82,6 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
   return rows.map((row, idx) => {
     const matches = fuzzyMatch(row.project, row.unitNo, row.description);
     const best = matches[0];
-
-    // Parse date string safely without timezone shift (YYYY-MM-DD)
-    const [year, month] = row.date.split('-').map(Number);
-    // Due date = last day of the same month
-    const dueDate = new Date(year, month, 0); // month is 1-based; Date(year, month, 0) = last day of month
 
     return {
       ...row,
@@ -81,7 +95,7 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
       trackingOption2: best?.trackingOption2 ?? '',
       reference: best?.reference ?? '',
       quantity: best?.quantity ?? 1,
-      dueDate: dueDate.toISOString().slice(0, 10),
+      dueDate: lastDayOfMonth(row.date),
       score: best?.score ?? 0,
     };
   });
@@ -121,8 +135,8 @@ export async function batchCreateInvoicesAction(
       return {
         Type: 'ACCREC',
         Contact: { Name: row.contactName },
-        Date: row.date,
-        DueDate: row.dueDate,
+        Date: toIsoDate(row.date),
+        DueDate: toIsoDate(row.dueDate),
         LineItems: [
           {
             Description: row.description,

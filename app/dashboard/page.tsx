@@ -301,7 +301,7 @@ export default async function DashboardPage() {
                       const max = Math.max(...dailyCounts.map((r) => r.count), 1);
                       return dailyCounts.map((row) => (
                         <tr key={row.date}>
-                          <td className="px-4 py-2 font-mono text-xs">{row.date.split('-').reverse().join('/')}</td>
+                          <td className="px-4 py-2 font-mono text-xs">{row.date}</td>
                           <td className="px-4 py-2 text-right font-medium">{row.count}</td>
                           <td className="px-4 py-2">
                             <div

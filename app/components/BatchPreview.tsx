@@ -8,18 +8,6 @@ import {
 } from '@/app/actions/batch';
 import BatchResultBar from './BatchResultBar';
 
-// DD/MM/YYYY ↔ YYYY-MM-DD conversion
-function isoToMY(iso: string): string {
-  if (!iso) return '';
-  const p = iso.split('-');
-  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
-}
-function myToIso(my: string): string {
-  if (!my) return '';
-  const p = my.split('/');
-  return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : my;
-}
-
 interface Props {
   rows: BatchRowWithMatch[];
   onBack: () => void;
@@ -241,8 +229,8 @@ export default function BatchPreview({ rows, onBack }: Props) {
                   </td>
                   <td className="px-1 py-1 text-center text-gray-400">{row.rowIndex + 1}</td>
                   <td className="px-1 py-1">
-                    <input type="text" value={isoToMY(row.date)}
-                      onChange={e => updateRow(row.rowIndex, 'date', myToIso(e.target.value))}
+                    <input type="text" value={row.date}
+                      onChange={e => updateRow(row.rowIndex, 'date', e.target.value)}
                       placeholder="DD/MM/YYYY"
                       disabled={rowDone} className={inputCls('w-full')} />
                   </td>
@@ -298,8 +286,8 @@ export default function BatchPreview({ rows, onBack }: Props) {
                       disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
-                    <input type="text" value={isoToMY(row.dueDate)}
-                      onChange={e => updateRow(row.rowIndex, 'dueDate', myToIso(e.target.value))}
+                    <input type="text" value={row.dueDate}
+                      onChange={e => updateRow(row.rowIndex, 'dueDate', e.target.value)}
                       placeholder="DD/MM/YYYY"
                       disabled={rowDone} className={inputCls('w-full')} />
                   </td>

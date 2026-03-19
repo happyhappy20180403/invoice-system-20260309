@@ -8,6 +8,13 @@ import {
   type XeroCreditNotePayload,
 } from '@/lib/xero/xero-service';
 import { db } from '@/lib/db';
+
+/** Convert DD/MM/YYYY to YYYY-MM-DD for Xero API */
+function toIsoDate(dmyDate: string): string {
+  const p = dmyDate.split('/');
+  if (p.length === 3) return `${p[2]}-${p[1]}-${p[0]}`;
+  return dmyDate;
+}
 import { createdInvoices } from '@/lib/db/schema';
 import { z } from 'zod';
 
@@ -72,8 +79,8 @@ export async function createInvoiceAction(formData: InvoiceFormData) {
   const payload: XeroInvoicePayload = {
     Type: 'ACCREC',
     Contact: { Name: data.contactName },
-    Date: data.date,
-    DueDate: data.dueDate,
+    Date: toIsoDate(data.date),
+    DueDate: toIsoDate(data.dueDate),
     LineItems: [
       {
         Description: data.description,

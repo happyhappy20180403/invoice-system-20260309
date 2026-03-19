@@ -159,18 +159,16 @@ CRITICAL RULES:
 - Descriptions must use corrected vocabulary above. Fix ALL scan typos.
 - Expand project abbreviations.
 
-DATE CONVERSION (VERY IMPORTANT):
-- The table uses DD/MM/YYYY format (Malaysian standard). The FIRST number is the DAY, the SECOND is the MONTH.
-- Example: "04/03/2026" in the table means Day=04, Month=03 (March 4th) → output "2026-03-04"
-- Example: "06/03/2026" in the table means Day=06, Month=03 (March 6th) → output "2026-03-06"
-- Example: "09/03/2026" in the table means Day=09, Month=03 (March 9th) → output "2026-03-09"
-- NEVER interpret DD/MM as MM/DD. This is NOT American date format.
-- Output date format: YYYY-MM-DD
+DATE FORMAT (VERY IMPORTANT):
+- The table uses DD/MM/YYYY format (Malaysian standard).
+- Output the date EXACTLY as it appears in the table: DD/MM/YYYY.
+- Do NOT convert or reformat the date. Just copy it as-is.
+- Example: if the table shows "04/03/2026", output "04/03/2026".
 
 - Return ONLY valid JSON array. No markdown, no explanation.
 
 Output format:
-[{"date":"2026-03-04","project":"PONDEROSA","unitNo":"B-10-03","description":"COOKER HOOD REPAIR","costAmount":740,"finalPrice":1180},...]`;
+[{"date":"04/03/2026","project":"PONDEROSA","unitNo":"B-10-03","description":"COOKER HOOD REPAIR","costAmount":740,"finalPrice":1180},...]`;
 
 /** Call Gemini API for a single page image with retry */
 async function callGeminiPage(
@@ -252,26 +250,24 @@ async function callGeminiPage(
 // ---------------------------------------------------------------------------
 
 /**
- * Validate that date is DD/MM not MM/DD. If the day value > 12, it's unambiguous.
- * For ambiguous dates (both day and month <= 12), trust Gemini but log a warning.
- * Also checks for clearly invalid dates.
+ * Validate DD/MM/YYYY format. If Gemini returned YYYY-MM-DD, convert to DD/MM/YYYY.
  */
 function validateGeminiDate(dateStr: string): string {
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    return dateStr || new Date().toISOString().slice(0, 10);
-  }
-  const [year, month, day] = dateStr.split('-').map(Number);
-
-  // Check for swapped month/day: if month > 12, it's invalid — swap back
-  if (month > 12 && day <= 12) {
-    const fixed = `${year}-${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}`;
-    console.log(`[OCR] Date fix: ${dateStr} → ${fixed} (month > 12, swapped M/D)`);
-    return fixed;
+  if (!dateStr) {
+    const today = new Date();
+    return `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
   }
 
-  // Check for impossible day
-  if (day > 31 || month > 12) {
-    console.warn(`[OCR] Invalid date: ${dateStr}, using as-is`);
+  // Already DD/MM/YYYY
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+    return dateStr;
+  }
+
+  // Gemini returned YYYY-MM-DD — convert to DD/MM/YYYY
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [year, month, day] = dateStr.split('-');
+    console.log(`[OCR] Date convert: ${dateStr} → ${day}/${month}/${year}`);
+    return `${day}/${month}/${year}`;
   }
 
   return dateStr;
@@ -327,7 +323,7 @@ async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
       const desc = correctDescription(row.description || 'Repair/Maintenance');
       const validatedDate = validateGeminiDate(row.date);
       allItems.push({
-        date: validatedDate || new Date().toISOString().slice(0, 10),
+        date: validatedDate || (() => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; })(),
         project: row.project || '',
         unitNo: row.unitNo || '',
         description: desc,
@@ -422,7 +418,7 @@ async function extractImageWithGemini(buffer: Buffer, mimeType: string): Promise
     const desc = correctDescription(row.description || 'Repair/Maintenance');
     const validatedDate = validateGeminiDate(row.date);
     return {
-      date: validatedDate || new Date().toISOString().slice(0, 10),
+      date: validatedDate || (() => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; })(),
       project: row.project || '',
       unitNo: row.unitNo || '',
       description: desc,
@@ -478,7 +474,7 @@ async function extractVisionText(buffer: Buffer): Promise<string> {
 // ---------------------------------------------------------------------------
 
 function generateMockItems(): ParsedItem[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = (() => { const d = new Date(); return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; })();
   return [
     { date: today, project: 'MOLEK PINE', unitNo: 'A-12-03', description: 'Plumbing repair - leaking pipe', amount: 350, confidence: 0.5, rawLine: '[Mock]' },
     { date: today, project: 'MOLEK PINE', unitNo: 'B-05-11', description: 'Electrical fault - circuit breaker', amount: 580, confidence: 0.5, rawLine: '[Mock]' },

@@ -10,6 +10,7 @@ interface OcrResponse {
   items: ParsedItem[];
   isMock: boolean;
   ocrMethod?: string;
+  warnings?: string[];
 }
 
 interface Props {

@@ -77,15 +77,23 @@ const AMOUNT_PATTERNS = [
 // Extraction helpers
 // -----------------------------------------------------------------------
 
+/** Normalize any date format to DD/MM/YYYY */
 function normalizeDate(raw: string): string {
+  // Already DD/MM/YYYY
   const dmySlash = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
-  if (dmySlash) return `${dmySlash[3]}-${dmySlash[2]}-${dmySlash[1]}`;
+  if (dmySlash) return raw;
 
+  // DD-MM-YYYY → DD/MM/YYYY
   const dmyDash = /^(\d{2})-(\d{2})-(\d{4})$/.exec(raw);
-  if (dmyDash) return `${dmyDash[3]}-${dmyDash[2]}-${dmyDash[1]}`;
+  if (dmyDash) return `${dmyDash[1]}/${dmyDash[2]}/${dmyDash[3]}`;
 
+  // DD.MM.YYYY → DD/MM/YYYY
   const dmyDot = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(raw);
-  if (dmyDot) return `${dmyDot[3]}-${dmyDot[2]}-${dmyDot[1]}`;
+  if (dmyDot) return `${dmyDot[1]}/${dmyDot[2]}/${dmyDot[3]}`;
+
+  // YYYY-MM-DD → DD/MM/YYYY
+  const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
 
   return raw;
 }
@@ -97,7 +105,8 @@ function extractDate(line: string): { value: string; confidence: number } {
       return { value: normalizeDate(match[0]), confidence: 0.9 };
     }
   }
-  return { value: new Date().toISOString().slice(0, 10), confidence: 0.1 };
+  const d = new Date();
+  return { value: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`, confidence: 0.1 };
 }
 
 function extractProject(line: string): { value: string; confidence: number } {
@@ -280,7 +289,8 @@ export function parseOcrText(rawText: string): ParseResult {
   const items: ParsedItem[] = [];
 
   // Collect global context (date, project) from first pass
-  let globalDate = new Date().toISOString().slice(0, 10);
+  const _d = new Date();
+  let globalDate = `${String(_d.getDate()).padStart(2, '0')}/${String(_d.getMonth() + 1).padStart(2, '0')}/${_d.getFullYear()}`;
   let globalProject = '';
 
   for (const line of mergedLines) {

@@ -4,22 +4,14 @@ import { useState, useCallback } from 'react';
 import { fuzzyMatchAction, getTrackingOptionsAction } from '@/app/actions/match';
 import type { PreviewData } from './InvoiceDashboard';
 
-function isoToMY(iso: string): string {
-  const p = iso.split('-');
-  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
-}
-function myToIso(my: string): string {
-  const p = my.split('/');
-  return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : my;
-}
-
 interface Props {
   onPreview: (data: PreviewData) => void;
 }
 
 export default function InvoiceForm({ onPreview }: Props) {
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const [date, setDate] = useState(todayIso);
+  const d = new Date();
+  const todayDMY = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+  const [date, setDate] = useState(todayDMY);
   const [project, setProject] = useState('');
   const [unitNo, setUnitNo] = useState('');
   const [description, setDescription] = useState('');
@@ -34,13 +26,18 @@ export default function InvoiceForm({ onPreview }: Props) {
       const suggestions = await fuzzyMatchAction(project, unitNo, description);
       const bestMatch = suggestions[0];
 
-      // Parse date safely without timezone shift
-      const [year, month] = date.split('-').map(Number);
-      const dueDate = new Date(year, month, 0); // last day of same month
+      // Due date = last day of same month (date is DD/MM/YYYY)
+      const dateParts = date.split('/');
+      let dueDateStr = date;
+      if (dateParts.length === 3) {
+        const [, mm, yyyy] = dateParts.map(Number);
+        const lastDay = new Date(yyyy, mm, 0).getDate();
+        dueDateStr = `${String(lastDay).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
+      }
 
       const previewData: PreviewData = {
         date,
-        dueDate: dueDate.toISOString().slice(0, 10),
+        dueDate: dueDateStr,
         project,
         unitNo,
         description,
@@ -77,8 +74,8 @@ export default function InvoiceForm({ onPreview }: Props) {
           </label>
           <input
             type="text"
-            value={isoToMY(date)}
-            onChange={e => setDate(myToIso(e.target.value))}
+            value={date}
+            onChange={e => setDate(e.target.value)}
             placeholder="DD/MM/YYYY"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />

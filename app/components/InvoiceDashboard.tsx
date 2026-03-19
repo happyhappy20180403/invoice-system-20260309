@@ -93,9 +93,14 @@ export default function InvoiceDashboard() {
         const suggestions = await fuzzyMatchAction(item.project, item.unitNo, item.description);
         const best = suggestions[0];
 
-        // Calculate due date (last day of same month)
-        const [year, month] = item.date.split('-').map(Number);
-        const dueDate = new Date(year, month, 0);
+        // Calculate due date (last day of same month) — date is DD/MM/YYYY
+        const dateParts = item.date.split('/');
+        let dueDateStr = item.date;
+        if (dateParts.length === 3) {
+          const [, mm, yyyy] = dateParts.map(Number);
+          const lastDay = new Date(yyyy, mm, 0).getDate();
+          dueDateStr = `${String(lastDay).padStart(2, '0')}/${String(mm).padStart(2, '0')}/${yyyy}`;
+        }
 
         rows.push({
           date: item.date,
@@ -113,7 +118,7 @@ export default function InvoiceDashboard() {
           trackingOption2: best?.trackingOption2 ?? '',
           reference: best?.reference ?? '',
           quantity: best?.quantity ?? 1,
-          dueDate: dueDate.toISOString().slice(0, 10),
+          dueDate: dueDateStr,
           score: best?.score ?? 0,
         });
       }
