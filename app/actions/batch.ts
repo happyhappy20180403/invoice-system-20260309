@@ -64,8 +64,10 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
     const matches = fuzzyMatch(row.project, row.unitNo, row.description);
     const best = matches[0];
 
-    const dueDate = new Date(row.date);
-    dueDate.setMonth(dueDate.getMonth() + 1, 0); // last day of same month
+    // Parse date string safely without timezone shift (YYYY-MM-DD)
+    const [year, month] = row.date.split('-').map(Number);
+    // Due date = last day of the same month
+    const dueDate = new Date(year, month, 0); // month is 1-based; Date(year, month, 0) = last day of month
 
     return {
       ...row,

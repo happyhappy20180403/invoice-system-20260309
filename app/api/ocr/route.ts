@@ -118,8 +118,8 @@ function parseGeminiJson(text: string): GeminiExtractedRow[] {
 const GEMINI_EXTRACTION_PROMPT = `You are a precise data extraction engine for property repair work orders. Read the scanned table carefully, character by character, and extract ALL line items.
 
 TABLE COLUMNS (left to right):
-1. Date (DD/MM/YYYY)
-2. Project name (abbreviations: MP4=MOLEK PINE 4, MP3=MOLEK PINE 3, SUASANA, PONDER OSA=PONDEROSA, SUMMER PLACE, IMPERIA, MOLEK PULAI)
+1. Date (DD/MM/YYYY — this is MALAYSIAN format: DAY first, then MONTH)
+2. Project name (abbreviations: MP4=MOLEK PINE 4, MP3=MOLEK PINE 3, SUASANA, PONDER OSA=PONDEROSA, SUMMER PLACE, TROPEZ, IMPERIA, MOLEK PULAI)
 3. Unit number (e.g. B-10-03, 14-01, B-13A-06)
 4. Description of repair work (may span 2 lines in the table — merge into one)
 5. Payment method (internet banking or petty cash)
@@ -150,17 +150,27 @@ SCAN ARTIFACT CORRECTIONS (always apply these):
 - Remove stray punctuation at end (trailing commas, periods)
 
 CRITICAL RULES:
-- Extract EVERY row. Do not skip any.
-- "costAmount" = the printed Internet Banking (RM) amount
+- Extract ONLY the rows that actually exist in the table. Do NOT invent, duplicate, or hallucinate rows.
+- If two rows look very similar but have different unit numbers or descriptions, they are separate rows.
+- If a description spans two lines in the table, merge them into ONE row (not two).
+- "costAmount" = the printed Internet Banking (RM) amount (Receipt Amount column)
 - "finalPrice" = the HANDWRITTEN amount in the rightmost "Final Price (Claim to Customer)" column. Read handwriting carefully.
 - If finalPrice is blank/unreadable, set it to null.
 - Descriptions must use corrected vocabulary above. Fix ALL scan typos.
 - Expand project abbreviations.
-- Date format: YYYY-MM-DD
+
+DATE CONVERSION (VERY IMPORTANT):
+- The table uses DD/MM/YYYY format (Malaysian standard). The FIRST number is the DAY, the SECOND is the MONTH.
+- Example: "04/03/2026" in the table means Day=04, Month=03 (March 4th) → output "2026-03-04"
+- Example: "06/03/2026" in the table means Day=06, Month=03 (March 6th) → output "2026-03-06"
+- Example: "09/03/2026" in the table means Day=09, Month=03 (March 9th) → output "2026-03-09"
+- NEVER interpret DD/MM as MM/DD. This is NOT American date format.
+- Output date format: YYYY-MM-DD
+
 - Return ONLY valid JSON array. No markdown, no explanation.
 
 Output format:
-[{"date":"2026-02-03","project":"PONDEROSA","unitNo":"B-10-03","description":"COOKER HOOD REPAIR","costAmount":740,"finalPrice":1180},...]`;
+[{"date":"2026-03-04","project":"PONDEROSA","unitNo":"B-10-03","description":"COOKER HOOD REPAIR","costAmount":740,"finalPrice":1180},...]`;
 
 /** Call Gemini API for a single page image with retry */
 async function callGeminiPage(
@@ -237,6 +247,58 @@ async function callGeminiPage(
   throw lastError ?? new Error('Gemini: unknown error after retries');
 }
 
+// ---------------------------------------------------------------------------
+// Post-processing: validate Gemini dates and deduplicate rows
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate that date is DD/MM not MM/DD. If the day value > 12, it's unambiguous.
+ * For ambiguous dates (both day and month <= 12), trust Gemini but log a warning.
+ * Also checks for clearly invalid dates.
+ */
+function validateGeminiDate(dateStr: string): string {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return dateStr || new Date().toISOString().slice(0, 10);
+  }
+  const [year, month, day] = dateStr.split('-').map(Number);
+
+  // Check for swapped month/day: if month > 12, it's invalid — swap back
+  if (month > 12 && day <= 12) {
+    const fixed = `${year}-${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}`;
+    console.log(`[OCR] Date fix: ${dateStr} → ${fixed} (month > 12, swapped M/D)`);
+    return fixed;
+  }
+
+  // Check for impossible day
+  if (day > 31 || month > 12) {
+    console.warn(`[OCR] Invalid date: ${dateStr}, using as-is`);
+  }
+
+  return dateStr;
+}
+
+/**
+ * Remove duplicate rows from Gemini output.
+ * Two rows are duplicates if they share the same project + unitNo + description.
+ */
+function deduplicateRows(rows: GeminiExtractedRow[]): GeminiExtractedRow[] {
+  const seen = new Set<string>();
+  const result: GeminiExtractedRow[] = [];
+  for (const row of rows) {
+    const key = `${row.project}|${row.unitNo}|${row.description}`.toUpperCase();
+    if (seen.has(key)) {
+      console.log(`[OCR] Removing duplicate row: ${key}`);
+      continue;
+    }
+    seen.add(key);
+    result.push(row);
+  }
+  if (result.length < rows.length) {
+    console.log(`[OCR] Dedup: ${rows.length} → ${result.length} rows`);
+  }
+  return result;
+}
+
 async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
@@ -246,13 +308,16 @@ async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
   for (let pageIdx = 0; pageIdx < pageImages.length; pageIdx++) {
     const base64 = pageImages[pageIdx].toString('base64');
 
-    let rows: GeminiExtractedRow[];
+    let rawRows: GeminiExtractedRow[];
     try {
-      rows = await callGeminiPage(base64, apiKey, pageIdx);
+      rawRows = await callGeminiPage(base64, apiKey, pageIdx);
     } catch (parseErr) {
       console.error(`[OCR] Gemini failed for page ${pageIdx + 1}:`, String(parseErr));
       throw parseErr; // Propagate so caller knows Gemini failed
     }
+
+    // Post-process: deduplicate and validate dates
+    const rows = deduplicateRows(rawRows);
 
     for (const row of rows) {
       const amount = typeof row.finalPrice === 'number' ? row.finalPrice
@@ -260,14 +325,15 @@ async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
         : null;
       const cost = typeof row.costAmount === 'number' ? row.costAmount : null;
       const desc = correctDescription(row.description || 'Repair/Maintenance');
+      const validatedDate = validateGeminiDate(row.date);
       allItems.push({
-        date: row.date || new Date().toISOString().slice(0, 10),
+        date: validatedDate || new Date().toISOString().slice(0, 10),
         project: row.project || '',
         unitNo: row.unitNo || '',
         description: desc,
         amount,
         confidence: row.finalPrice != null ? 0.95 : row.costAmount != null ? 0.8 : 0.5,
-        rawLine: `[Gemini] ${row.date} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
+        rawLine: `[Gemini] ${validatedDate} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
       });
     }
   }
@@ -345,7 +411,8 @@ async function extractImageWithGemini(buffer: Buffer, mimeType: string): Promise
   const base64 = buffer.toString('base64');
 
   // Reuse the same retry-capable helper (treat image as "page 0")
-  const rows = await callGeminiPage(base64, apiKey, 0);
+  const rawRows = await callGeminiPage(base64, apiKey, 0);
+  const rows = deduplicateRows(rawRows);
 
   return rows.map(row => {
     const amount = typeof row.finalPrice === 'number' ? row.finalPrice
@@ -353,14 +420,15 @@ async function extractImageWithGemini(buffer: Buffer, mimeType: string): Promise
       : null;
     const cost = typeof row.costAmount === 'number' ? row.costAmount : null;
     const desc = correctDescription(row.description || 'Repair/Maintenance');
+    const validatedDate = validateGeminiDate(row.date);
     return {
-      date: row.date || new Date().toISOString().slice(0, 10),
+      date: validatedDate || new Date().toISOString().slice(0, 10),
       project: row.project || '',
       unitNo: row.unitNo || '',
       description: desc,
       amount,
       confidence: row.finalPrice != null ? 0.95 : row.costAmount != null ? 0.8 : 0.5,
-      rawLine: `[Gemini] ${row.date} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
+      rawLine: `[Gemini] ${validatedDate} ${row.project} ${row.unitNo} | cost:RM${cost ?? '?'} → claim:RM${amount ?? '?'}`,
     };
   });
 }

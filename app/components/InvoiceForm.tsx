@@ -24,8 +24,9 @@ export default function InvoiceForm({ onPreview }: Props) {
       const suggestions = await fuzzyMatchAction(project, unitNo, description);
       const bestMatch = suggestions[0];
 
-      const dueDate = new Date(date);
-      dueDate.setMonth(dueDate.getMonth() + 1, 0); // last day of same month
+      // Parse date safely without timezone shift
+      const [year, month] = date.split('-').map(Number);
+      const dueDate = new Date(year, month, 0); // last day of same month
 
       const previewData: PreviewData = {
         date,

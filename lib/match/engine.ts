@@ -58,7 +58,10 @@ const PROJECT_ALIASES: Record<string, string[]> = {
   'MOLEK PINE': ['MP4', 'MP3'],
   'SUMMER PLACE': ['V@Summerplace'],
   'SUMMERPLACE': ['V@Summerplace'],
+  'TROPEZ': ['Tropez', 'TROPEZ'],
+  'PONDEROSA': ['Ponderosa', 'PONDEROSA GREEN NO.', 'Ponderosa Green', 'Ponderosa Green No.'],
   'PONDEROSA GREEN': ['Ponderosa Green', 'Ponderosa Green No.', 'PONDEROSA GREEN NO.'],
+  'SUASANA': ['Suasana Iskandar', 'Suasana'],
 };
 
 function resolveProjectNames(input: string): string[] {
@@ -138,17 +141,44 @@ export function fuzzyMatch(
     console.log('[Match] Phase 1 candidates:', candidates.length, 'coreUnit:', coreUnit);
 
     if (candidates.length > 0) {
-      // Phase 1a: If description looks like a repair, prefer REPAIR records
-      const isRepairQuery = /repair|light|aircon|aircond|pipe|door|lock|fan|toilet|pump|cabinet|window|ceiling|wiring|socket/i.test(description);
-      let pool = candidates;
-      // Prefer matching transaction type: REPAIR → IN-REP records, REQUESTED → IN-REQ records
+      // Phase 1a: Determine transaction type from description
       const isRequestedQuery = /request(ed)?\s*item/i.test(description);
+      const isRepairQuery = !isRequestedQuery && /repair|light|aircon|aircond|pipe|door|lock|fan|toilet|pump|cabinet|window|ceiling|wiring|socket|heater|bulb|remote|sensor|oven/i.test(description);
+
+      let pool = candidates;
+
+      // Filter by transaction type
       if (isRequestedQuery) {
         const reqOnly = candidates.filter(r => /requested?\s*item/i.test(r.description ?? ''));
         if (reqOnly.length > 0) pool = reqOnly;
       } else if (isRepairQuery) {
         const repairOnly = candidates.filter(r => /repair/i.test(r.description ?? ''));
         if (repairOnly.length > 0) pool = repairOnly;
+      }
+
+      // Phase 1b: For repair/requested items, ALWAYS prefer Owner (O) contacts
+      // Owner contacts have "(O)" in the contact name
+      if (isRepairQuery || isRequestedQuery) {
+        const ownerRecords = pool.filter(r => /\(O\)/i.test(r.contactName ?? ''));
+        if (ownerRecords.length > 0) {
+          pool = ownerRecords;
+          console.log('[Match] Preferred Owner (O) contacts:', ownerRecords.length);
+        }
+      }
+
+      // Phase 1c: For repair descriptions, prefer records with "IN - REP" tracking
+      if (isRepairQuery) {
+        const repTrack = pool.filter(r => r.trackingOption1 === 'IN - REP');
+        if (repTrack.length > 0) {
+          pool = repTrack;
+          console.log('[Match] Preferred IN - REP tracking records:', repTrack.length);
+        }
+      } else if (isRequestedQuery) {
+        const reqTrack = pool.filter(r => r.trackingOption1 === 'IN - REQ');
+        if (reqTrack.length > 0) {
+          pool = reqTrack;
+          console.log('[Match] Preferred IN - REQ tracking records:', reqTrack.length);
+        }
       }
 
       // Among pool, rank by description similarity
@@ -161,10 +191,23 @@ export function fuzzyMatch(
       const descQuery = description || '';
       const ranked = descQuery ? descFuse.search(descQuery, { limit: 10 }) : [];
       if (ranked.length > 0) {
-        return ranked.map(r => toResult(r.item, 1 - (r.score ?? 1)));
+        const results = ranked.map(r => toResult(r.item, 1 - (r.score ?? 1)));
+        // Ensure trackingOption1 is correct for repair/request types
+        if (isRepairQuery) {
+          results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REP/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REP'; });
+        } else if (isRequestedQuery) {
+          results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REQ/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REQ'; });
+        }
+        return results;
       }
-      // Fallback: return repair records first if available
-      return pool.slice(0, 10).map(r => toResult(r, 0.8));
+      // Fallback: return pool records
+      const results = pool.slice(0, 10).map(r => toResult(r, 0.8));
+      if (isRepairQuery) {
+        results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REP/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REP'; });
+      } else if (isRequestedQuery) {
+        results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REQ/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REQ'; });
+      }
+      return results;
     }
   }
 

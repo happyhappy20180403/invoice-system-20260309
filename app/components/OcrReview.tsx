@@ -110,8 +110,9 @@ export default function OcrReview({
         );
         const best = suggestions[0];
 
-        const dueDate = new Date(item.editDate);
-        dueDate.setMonth(dueDate.getMonth() + 1, 0); // last day of same month
+        // Parse date safely without timezone shift
+        const [year, month] = item.editDate.split('-').map(Number);
+        const dueDate = new Date(year, month, 0); // last day of same month
 
         previews.push({
           date: item.editDate,
