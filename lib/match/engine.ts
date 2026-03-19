@@ -88,11 +88,31 @@ function toResult(item: HistoryRecord, score: number): MatchResult {
     trackingOption1: item.trackingOption1 ?? '',
     trackingOption2: item.trackingOption2 ?? '',
     reference: item.reference ?? '',
-    invoiceType: item.invoiceType ?? 'ACCREC',
+    invoiceType: item.invoiceType || 'ACCREC', // use || to catch empty string ""
     unitAmount: item.unitAmount ?? 0,
     quantity: item.quantity ?? 1,
     score,
   };
+}
+
+/**
+ * Enforce correct defaults for repair/request invoices:
+ * - trackingOption1: "IN - REP" for repairs, "IN - REQ" for requests
+ * - reference: "INVOICE" (never "DEBIT NOTE")
+ * - invoiceType: always "ACCREC"
+ */
+function applyRepairDefaults(results: MatchResult[], isRepair: boolean, isRequest: boolean): void {
+  for (const r of results) {
+    if (isRepair) {
+      if (!r.trackingOption1 || !/IN\s*-\s*REP/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REP';
+      r.reference = 'INVOICE';
+      r.invoiceType = 'ACCREC';
+    } else if (isRequest) {
+      if (!r.trackingOption1 || !/IN\s*-\s*REQ/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REQ';
+      r.reference = 'INVOICE';
+      r.invoiceType = 'ACCREC';
+    }
+  }
 }
 
 export function fuzzyMatch(
@@ -192,21 +212,12 @@ export function fuzzyMatch(
       const ranked = descQuery ? descFuse.search(descQuery, { limit: 10 }) : [];
       if (ranked.length > 0) {
         const results = ranked.map(r => toResult(r.item, 1 - (r.score ?? 1)));
-        // Ensure trackingOption1 is correct for repair/request types
-        if (isRepairQuery) {
-          results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REP/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REP'; });
-        } else if (isRequestedQuery) {
-          results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REQ/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REQ'; });
-        }
+        applyRepairDefaults(results, isRepairQuery, isRequestedQuery);
         return results;
       }
       // Fallback: return pool records
       const results = pool.slice(0, 10).map(r => toResult(r, 0.8));
-      if (isRepairQuery) {
-        results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REP/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REP'; });
-      } else if (isRequestedQuery) {
-        results.forEach(r => { if (!r.trackingOption1 || !/IN\s*-\s*REQ/i.test(r.trackingOption1)) r.trackingOption1 = 'IN - REQ'; });
-      }
+      applyRepairDefaults(results, isRepairQuery, isRequestedQuery);
       return results;
     }
   }

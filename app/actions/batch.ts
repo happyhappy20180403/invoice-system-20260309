@@ -76,7 +76,7 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
       contactName: best?.contactName ?? '',
       accountCode: best?.accountCode ?? '',
       taxType: best?.taxType ?? 'NONE',
-      invoiceType: best?.invoiceType ?? 'ACCREC',
+      invoiceType: best?.invoiceType || 'ACCREC',
       trackingOption1: best?.trackingOption1 ?? '',
       trackingOption2: best?.trackingOption2 ?? '',
       reference: best?.reference ?? '',
