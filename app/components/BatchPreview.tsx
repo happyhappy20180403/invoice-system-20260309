@@ -149,9 +149,9 @@ export default function BatchPreview({ rows, onBack }: Props) {
     }
   }, [editedRows, retryIndices]);
 
-  // Compact input style
+  // Compact input style — minimal padding for tight layout
   const inputCls = (w: string) =>
-    `${w} rounded border border-gray-200 px-1 py-0.5 text-xs focus:border-blue-400 focus:outline-none disabled:border-transparent disabled:bg-transparent`;
+    `${w} rounded border border-gray-200 px-0.5 py-0 text-xs leading-5 focus:border-blue-400 focus:outline-none disabled:border-transparent disabled:bg-transparent`;
 
   return (
     <div className="space-y-3">
@@ -172,8 +172,8 @@ export default function BatchPreview({ rows, onBack }: Props) {
       <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b bg-gray-50 text-left text-[11px] font-medium text-gray-500">
-              <th className="w-8 px-1 py-2 text-center">
+            <tr className="border-b bg-gray-50 text-left text-[10px] font-medium text-gray-500">
+              <th className="w-6 px-0.5 py-1 text-center">
                 <input
                   type="checkbox"
                   checked={selected.size === editedRows.length && editedRows.length > 0}
@@ -181,21 +181,21 @@ export default function BatchPreview({ rows, onBack }: Props) {
                   className="rounded"
                 />
               </th>
-              <th className="px-1 py-2 text-center">#</th>
-              <th className="whitespace-nowrap px-1 py-2">Date</th>
-              <th className="whitespace-nowrap px-1 py-2">Project</th>
-              <th className="whitespace-nowrap px-1 py-2">Unit</th>
-              <th className="whitespace-nowrap px-1 py-2">Description</th>
-              <th className="whitespace-nowrap px-1 py-2 text-right">Price</th>
-              <th className="whitespace-nowrap px-1 py-2">Contact</th>
-              <th className="whitespace-nowrap px-1 py-2">Acct</th>
-              <th className="whitespace-nowrap px-1 py-2">Tax</th>
-              <th className="whitespace-nowrap px-1 py-2">Track1</th>
-              <th className="whitespace-nowrap px-1 py-2">Track2</th>
-              <th className="whitespace-nowrap px-1 py-2">Ref</th>
-              <th className="whitespace-nowrap px-1 py-2">Due</th>
-              <th className="px-1 py-2 text-center">%</th>
-              <th className="whitespace-nowrap px-1 py-2">Status</th>
+              <th className="px-0.5 py-1 text-center">#</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Date</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Project</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Unit</th>
+              <th className="px-0.5 py-1">Description</th>
+              <th className="whitespace-nowrap px-0.5 py-1 text-right">Price</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Contact</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Acct</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Tax</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Track1</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Track2</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Ref</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Due</th>
+              <th className="px-0.5 py-1 text-center">%</th>
+              <th className="whitespace-nowrap px-0.5 py-1">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -218,7 +218,7 @@ export default function BatchPreview({ rows, onBack }: Props) {
 
               return (
                 <tr key={row.rowIndex} className={`border-b last:border-0 transition ${rowBg}`}>
-                  <td className="px-1 py-1 text-center">
+                  <td className="px-0.5 py-0.5 text-center">
                     <input
                       type="checkbox"
                       checked={selected.has(row.rowIndex)}
@@ -227,74 +227,74 @@ export default function BatchPreview({ rows, onBack }: Props) {
                       className="rounded"
                     />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1 text-center text-gray-400">{row.rowIndex + 1}</td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5 text-center text-gray-400">{row.rowIndex + 1}</td>
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.date} size={10}
                       onChange={e => updateRow(row.rowIndex, 'date', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.project} size={14}
                       onChange={e => updateRow(row.rowIndex, 'project', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.unitNo} size={8}
                       onChange={e => updateRow(row.rowIndex, 'unitNo', e.target.value)}
                       disabled={rowDone} className={inputCls('font-mono')} />
                   </td>
-                  <td className="min-w-[200px] px-1 py-1">
+                  <td className="min-w-[220px] px-0.5 py-0.5">
                     <input type="text" value={row.description}
                       onChange={e => updateRow(row.rowIndex, 'description', e.target.value)}
                       disabled={rowDone} className={inputCls('w-full')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
-                    <input type="number" value={row.finalPrice} size={5}
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
+                    <input type="number" value={row.finalPrice} size={3}
                       onChange={e => updateRow(row.rowIndex, 'finalPrice', parseFloat(e.target.value) || 0)}
                       disabled={rowDone} step="0.01" min="0"
                       className={inputCls('text-right tabular-nums')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.contactName} size={30}
                       onChange={e => updateRow(row.rowIndex, 'contactName', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.accountCode} size={6}
                       onChange={e => updateRow(row.rowIndex, 'accountCode', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.taxType} size={10}
                       onChange={e => updateRow(row.rowIndex, 'taxType', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.trackingOption1} size={8}
                       onChange={e => updateRow(row.rowIndex, 'trackingOption1', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.trackingOption2} size={12}
                       onChange={e => updateRow(row.rowIndex, 'trackingOption2', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.reference} size={8}
                       onChange={e => updateRow(row.rowIndex, 'reference', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
+                  <td className="whitespace-nowrap px-0.5 py-0.5">
                     <input type="text" value={row.dueDate} size={10}
                       onChange={e => updateRow(row.rowIndex, 'dueDate', e.target.value)}
                       disabled={rowDone} className={inputCls('')} />
                   </td>
-                  <td className="px-1 py-1 text-center">
+                  <td className="px-0.5 py-0.5 text-center">
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isLowScore ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
                       {(row.score * 100).toFixed(0)}
                     </span>
                   </td>
-                  <td className="px-1 py-1">
+                  <td className="px-0.5 py-0.5">
                     {result ? (
                       result.success ? (
                         <span className="text-[10px] font-semibold text-green-600" title={result.invoiceNumber || result.invoiceId}>
