@@ -183,19 +183,19 @@ export default function BatchPreview({ rows, onBack }: Props) {
               </th>
               <th className="w-7 px-1 py-2 text-center">#</th>
               <th className="w-[80px] px-1 py-2">Date</th>
-              <th className="w-[100px] px-1 py-2">Project</th>
-              <th className="w-[70px] px-1 py-2">Unit</th>
-              <th className="px-1 py-2">Description</th>
-              <th className="w-[70px] px-1 py-2 text-right">Price</th>
-              <th className="w-[130px] px-1 py-2">Contact</th>
-              <th className="w-[55px] px-1 py-2">Acct</th>
+              <th className="w-[90px] px-1 py-2">Project</th>
+              <th className="w-[65px] px-1 py-2">Unit</th>
+              <th className="w-[160px] px-1 py-2">Description</th>
+              <th className="w-[65px] px-1 py-2 text-right">Price</th>
+              <th className="min-w-[160px] px-1 py-2">Contact</th>
+              <th className="w-[60px] px-1 py-2">Acct</th>
               <th className="w-[80px] px-1 py-2">Tax</th>
-              <th className="w-[70px] px-1 py-2">Track1</th>
-              <th className="w-[70px] px-1 py-2">Track2</th>
+              <th className="w-[75px] px-1 py-2">Track1</th>
+              <th className="w-[90px] px-1 py-2">Track2</th>
               <th className="w-[70px] px-1 py-2">Ref</th>
-              <th className="w-[100px] px-1 py-2">Due</th>
-              <th className="w-[40px] px-1 py-2 text-center">%</th>
-              <th className="w-[70px] px-1 py-2">Status</th>
+              <th className="w-[85px] px-1 py-2">Due</th>
+              <th className="w-[30px] px-1 py-2 text-center">%</th>
+              <th className="w-[55px] px-1 py-2">Status</th>
             </tr>
           </thead>
           <tbody>
