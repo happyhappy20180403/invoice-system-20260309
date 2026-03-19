@@ -6,11 +6,10 @@ import InvoicePreview from './InvoicePreview';
 import BatchInput from './BatchInput';
 import BatchPreview from './BatchPreview';
 import FileUpload from './FileUpload';
-import OcrReview from './OcrReview';
 import type { InvoiceFormData } from '@/app/actions/invoice';
 import type { BatchRowWithMatch } from '@/app/actions/batch';
-import type { MatchResult } from '@/lib/match/engine';
 import type { ParsedItem } from '@/lib/ocr/parser';
+import { fuzzyMatchAction } from '@/app/actions/match';
 
 export type PreviewData = InvoiceFormData & {
   suggestions: Array<{
@@ -30,16 +29,7 @@ export type PreviewData = InvoiceFormData & {
 
 type Tab = 'single' | 'batch' | 'ocr';
 type BatchPhase = 'input' | 'preview';
-type OcrPhase = 'upload' | 'review' | 'batch-preview';
-
-interface OcrResult {
-  uploadId: number;
-  filename: string;
-  rawText: string;
-  items: ParsedItem[];
-  isMock: boolean;
-  ocrMethod?: string;
-}
+type OcrPhase = 'upload' | 'matching' | 'batch-preview';
 
 export default function InvoiceDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('single');
@@ -57,7 +47,6 @@ export default function InvoiceDashboard() {
 
   // OCR state
   const [ocrPhase, setOcrPhase] = useState<OcrPhase>('upload');
-  const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [ocrBatchRows, setOcrBatchRows] = useState<BatchRowWithMatch[]>([]);
   const [ocrCreatedCount, setOcrCreatedCount] = useState(0);
@@ -80,42 +69,66 @@ export default function InvoiceDashboard() {
   };
   const handleBatchBack = () => setBatchPhase('input');
 
-  // OCR handlers
-  const handleOcrComplete = (result: OcrResult) => {
-    setOcrResult(result);
+  // OCR handlers — skip review, go directly to batch preview
+  const handleOcrComplete = async (result: {
+    uploadId: number;
+    filename: string;
+    rawText: string;
+    items: ParsedItem[];
+    isMock: boolean;
+    ocrMethod?: string;
+    warnings?: string[];
+  }) => {
     setOcrError(null);
-    setOcrPhase('review');
+    setOcrPhase('matching');
+
+    try {
+      // Run fuzzy matching on each OCR item directly
+      const rows: BatchRowWithMatch[] = [];
+      for (let idx = 0; idx < result.items.length; idx++) {
+        const item = result.items[idx];
+        const amount = item.amount ?? 0;
+        if (amount <= 0) continue; // skip items with no amount
+
+        const suggestions = await fuzzyMatchAction(item.project, item.unitNo, item.description);
+        const best = suggestions[0];
+
+        // Calculate due date (last day of same month)
+        const [year, month] = item.date.split('-').map(Number);
+        const dueDate = new Date(year, month, 0);
+
+        rows.push({
+          date: item.date,
+          project: item.project,
+          unitNo: item.unitNo,
+          description: item.description,
+          finalPrice: amount,
+          rowIndex: idx,
+          matches: suggestions,
+          contactName: best?.contactName ?? '',
+          accountCode: best?.accountCode ?? '',
+          taxType: best?.taxType ?? 'NONE',
+          invoiceType: best?.invoiceType || 'ACCREC',
+          trackingOption1: best?.trackingOption1 ?? '',
+          trackingOption2: best?.trackingOption2 ?? '',
+          reference: best?.reference ?? '',
+          quantity: best?.quantity ?? 1,
+          dueDate: dueDate.toISOString().slice(0, 10),
+          score: best?.score ?? 0,
+        });
+      }
+
+      setOcrBatchRows(rows);
+      setOcrCreatedCount(0);
+      setOcrPhase('batch-preview');
+    } catch (err) {
+      setOcrError(`Matching failed: ${String(err)}`);
+      setOcrPhase('upload');
+    }
   };
   const handleOcrError = (message: string) => setOcrError(message);
-  const handleOcrConfirm = (previews: PreviewData[]) => {
-    // Convert PreviewData[] to BatchRowWithMatch[] for bulk processing
-    const rows: BatchRowWithMatch[] = previews.map((p, idx) => ({
-      date: p.date,
-      project: p.project,
-      unitNo: p.unitNo,
-      description: p.description,
-      finalPrice: p.finalPrice,
-      rowIndex: idx,
-      matches: p.suggestions as MatchResult[],
-      contactName: p.contactName,
-      accountCode: p.accountCode,
-      taxType: p.taxType,
-      invoiceType: p.invoiceType ?? 'ACCREC',
-      trackingOption1: p.trackingOption1 ?? '',
-      trackingOption2: p.trackingOption2 ?? '',
-      reference: p.reference ?? '',
-      quantity: p.quantity,
-      dueDate: p.dueDate,
-      score: p.suggestions[0]?.score ?? 0,
-    }));
-    setOcrBatchRows(rows);
-    setOcrCreatedCount(0);
-    setOcrPhase('batch-preview');
-  };
-  const handleOcrBatchBack = () => setOcrPhase('review');
   const resetOcr = () => {
     setOcrPhase('upload');
-    setOcrResult(null);
     setOcrError(null);
     setOcrBatchRows([]);
     setOcrCreatedCount(0);
@@ -193,14 +206,14 @@ export default function InvoiceDashboard() {
       {/* ===== OCR Upload Tab ===== */}
       {activeTab === 'ocr' && (
         <>
-          {/* Upload phase — 2-column layout */}
+          {/* Upload phase */}
           {ocrPhase === 'upload' && (
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
               <div className="rounded-xl bg-white p-6 shadow-sm">
                 <h2 className="mb-4 text-xl font-semibold">Upload Document</h2>
                 <p className="mb-5 text-sm text-gray-500">
-                  Upload a PDF or image of your repair work order. Our OCR engine
-                  will extract the line items automatically.
+                  Upload a PDF or image of your repair work order. OCR extracts
+                  line items and auto-matches contacts from history.
                 </p>
                 {ocrCreatedCount > 0 && (
                   <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
@@ -214,37 +227,31 @@ export default function InvoiceDashboard() {
               </div>
               <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8">
                 <div className="space-y-4 text-sm text-gray-500">
-                  <h3 className="text-base font-semibold text-gray-700">How OCR Upload works</h3>
+                  <h3 className="text-base font-semibold text-gray-700">How it works</h3>
                   <ol className="list-inside list-decimal space-y-2">
                     <li>Upload your repair work order (PDF or image)</li>
-                    <li>Review the automatically extracted items</li>
+                    <li>Review extracted items with auto-matched contacts</li>
                     <li>Edit any fields that need correction</li>
-                    <li>Confirm items to create DRAFT invoices in Xero</li>
+                    <li>Submit to create DRAFT invoices in Xero</li>
                   </ol>
-                  <p className="text-xs text-gray-400">Supported formats: PDF, JPG, PNG (max 10 MB)</p>
+                  <p className="text-xs text-gray-400">Supported: PDF, JPG, PNG (max 10 MB)</p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Review phase — FULL WIDTH for the table */}
-          {ocrPhase === 'review' && ocrResult && (
-            <div className="rounded-xl bg-white p-6 shadow-sm">
-              <OcrReview
-                uploadId={ocrResult.uploadId}
-                rawText={ocrResult.rawText}
-                items={ocrResult.items}
-                isMock={ocrResult.isMock}
-                ocrMethod={ocrResult.ocrMethod}
-                onConfirm={handleOcrConfirm}
-                onBack={resetOcr}
-              />
+          {/* Matching phase — loading indicator */}
+          {ocrPhase === 'matching' && (
+            <div className="flex flex-col items-center justify-center rounded-xl bg-white p-12 shadow-sm">
+              <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              <p className="text-sm font-medium text-gray-700">Matching with invoice history...</p>
+              <p className="mt-1 text-xs text-gray-400">Auto-filling contacts, accounts, and tracking categories</p>
             </div>
           )}
 
           {/* Batch preview phase — full width table with bulk submit */}
           {ocrPhase === 'batch-preview' && ocrBatchRows.length > 0 && (
-            <BatchPreview rows={ocrBatchRows} onBack={handleOcrBatchBack} />
+            <BatchPreview rows={ocrBatchRows} onBack={resetOcr} />
           )}
         </>
       )}

@@ -201,7 +201,7 @@ export default function BatchInput({ onMatched }: Props) {
                     <td className="py-2 pr-3 text-gray-400">{row.rowIndex + 1}</td>
                     {row.data ? (
                       <>
-                        <td className="py-2 pr-3">{row.data.date}</td>
+                        <td className="py-2 pr-3">{row.data.date.split('-').reverse().join('/')}</td>
                         <td className="py-2 pr-3">{row.data.project}</td>
                         <td className="py-2 pr-3">{row.data.unitNo}</td>
                         <td className="max-w-48 truncate py-2 pr-3" title={row.data.description}>

@@ -94,7 +94,7 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
       <div className="mb-6 rounded-lg bg-gray-50 p-4">
         <h3 className="mb-2 text-sm font-semibold text-gray-500 uppercase">Input</h3>
         <div className="grid grid-cols-2 gap-2 text-sm">
-          <div><span className="font-medium">Date:</span> {data.date}</div>
+          <div><span className="font-medium">Date:</span> {data.date.split('-').reverse().join('/')}</div>
           <div><span className="font-medium">Project:</span> {data.project}</div>
           <div><span className="font-medium">Unit No:</span> {data.unitNo}</div>
           <div><span className="font-medium">Price:</span> MYR {data.finalPrice.toFixed(2)}</div>

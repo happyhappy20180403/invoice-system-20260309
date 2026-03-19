@@ -124,7 +124,7 @@ export default async function HelpPage() {
                       <tbody className="divide-y divide-gray-100">
                         <tr>
                           <td className="px-3 py-2 font-medium text-gray-900">Date</td>
-                          <td className="px-3 py-2 text-gray-600">Invoice date (YYYY-MM-DD)</td>
+                          <td className="px-3 py-2 text-gray-600">Invoice date (DD/MM/YYYY)</td>
                           <td className="px-3 py-2 text-gray-500">Defaults to today</td>
                         </tr>
                         <tr>
