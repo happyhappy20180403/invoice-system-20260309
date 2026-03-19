@@ -50,7 +50,10 @@ const ALLOWED_TYPES: Record<string, string> = {
 };
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
+const isVercel = !!process.env.VERCEL;
+const UPLOADS_DIR = isVercel
+  ? path.join('/tmp', 'uploads')
+  : path.join(process.cwd(), 'data', 'uploads');
 
 // ---------------------------------------------------------------------------
 // Render PDF pages to PNG images via mupdf (shared utility)
