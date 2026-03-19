@@ -228,14 +228,31 @@ export default function BatchPreview({ rows, onBack }: Props) {
                     />
                   </td>
                   <td className="px-1 py-1 text-center text-gray-400">{row.rowIndex + 1}</td>
-                  <td className="px-1 py-1 text-[11px]">{row.date}</td>
-                  <td className="px-1 py-1 truncate font-medium" title={row.project}>{row.project}</td>
-                  <td className="px-1 py-1 truncate font-mono" title={row.unitNo}>{row.unitNo}</td>
                   <td className="px-1 py-1">
-                    <div className="truncate" title={row.description}>{row.description}</div>
+                    <input type="date" value={row.date}
+                      onChange={e => updateRow(row.rowIndex, 'date', e.target.value)}
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
-                  <td className="px-1 py-1 text-right tabular-nums">
-                    {row.finalPrice.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.project}
+                      onChange={e => updateRow(row.rowIndex, 'project', e.target.value)}
+                      disabled={rowDone} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.unitNo}
+                      onChange={e => updateRow(row.rowIndex, 'unitNo', e.target.value)}
+                      disabled={rowDone} className={inputCls('w-full font-mono')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.description}
+                      onChange={e => updateRow(row.rowIndex, 'description', e.target.value)}
+                      disabled={rowDone} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="number" value={row.finalPrice}
+                      onChange={e => updateRow(row.rowIndex, 'finalPrice', parseFloat(e.target.value) || 0)}
+                      disabled={rowDone} step="0.01" min="0"
+                      className={inputCls('w-full text-right tabular-nums')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="text" value={row.contactName}
