@@ -4,6 +4,15 @@ import { useState } from 'react';
 import { createInvoiceAction } from '@/app/actions/invoice';
 import type { PreviewData } from './InvoiceDashboard';
 
+function isoToMY(iso: string): string {
+  const p = iso.split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+function myToIso(my: string): string {
+  const p = my.split('/');
+  return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : my;
+}
+
 interface Props {
   data: PreviewData;
   onBack: () => void;
@@ -188,9 +197,10 @@ export default function InvoicePreview({ data, onBack, onCreated }: Props) {
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-500">Due Date</label>
             <input
-              type="date"
-              value={formState.dueDate}
-              onChange={e => setFormState(s => ({ ...s, dueDate: e.target.value }))}
+              type="text"
+              value={isoToMY(formState.dueDate)}
+              onChange={e => setFormState(s => ({ ...s, dueDate: myToIso(e.target.value) }))}
+              placeholder="DD/MM/YYYY"
               className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
             />
           </div>

@@ -4,12 +4,22 @@ import { useState, useCallback } from 'react';
 import { fuzzyMatchAction, getTrackingOptionsAction } from '@/app/actions/match';
 import type { PreviewData } from './InvoiceDashboard';
 
+function isoToMY(iso: string): string {
+  const p = iso.split('-');
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso;
+}
+function myToIso(my: string): string {
+  const p = my.split('/');
+  return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : my;
+}
+
 interface Props {
   onPreview: (data: PreviewData) => void;
 }
 
 export default function InvoiceForm({ onPreview }: Props) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const [date, setDate] = useState(todayIso);
   const [project, setProject] = useState('');
   const [unitNo, setUnitNo] = useState('');
   const [description, setDescription] = useState('');
@@ -66,9 +76,10 @@ export default function InvoiceForm({ onPreview }: Props) {
             Date
           </label>
           <input
-            type="date"
-            value={date}
-            onChange={e => setDate(e.target.value)}
+            type="text"
+            value={isoToMY(date)}
+            onChange={e => setDate(myToIso(e.target.value))}
+            placeholder="DD/MM/YYYY"
             className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
