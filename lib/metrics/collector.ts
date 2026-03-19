@@ -13,21 +13,18 @@ export function recordApiMetric(
   errorMessage?: string,
 ): void {
   // Fire-and-forget: do not await
-  Promise.resolve().then(() => {
-    try {
-      db.insert(apiMetrics)
-        .values({
-          endpoint,
-          method,
-          statusCode,
-          responseTimeMs,
-          errorMessage: errorMessage ?? null,
-        })
-        .run();
-    } catch {
+  db.insert(apiMetrics)
+    .values({
+      endpoint,
+      method,
+      statusCode,
+      responseTimeMs,
+      errorMessage: errorMessage ?? null,
+    })
+    .run()
+    .catch(() => {
       // Intentionally silent — metrics must never break the application
-    }
-  });
+    });
 }
 
 /**
@@ -38,19 +35,16 @@ export function recordSystemMetric(
   metricValue: number,
   metadata?: Record<string, unknown>,
 ): void {
-  Promise.resolve().then(() => {
-    try {
-      db.insert(systemMetrics)
-        .values({
-          metricName,
-          metricValue,
-          metadata: metadata ? JSON.stringify(metadata) : null,
-        })
-        .run();
-    } catch {
+  db.insert(systemMetrics)
+    .values({
+      metricName,
+      metricValue,
+      metadata: metadata ? JSON.stringify(metadata) : null,
+    })
+    .run()
+    .catch(() => {
       // Intentionally silent
-    }
-  });
+    });
 }
 
 /**

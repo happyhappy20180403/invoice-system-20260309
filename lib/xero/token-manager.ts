@@ -26,7 +26,7 @@ export async function saveToken(
   const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
   const refreshTokenExpiresAt = Math.floor(Date.now() / 1000) + 60 * 24 * 3600; // 60 days
 
-  const existing = db.select().from(xeroTokens).where(eq(xeroTokens.userId, userId)).get();
+  const existing = await db.select().from(xeroTokens).where(eq(xeroTokens.userId, userId)).get();
 
   const data = {
     userId,
@@ -40,15 +40,15 @@ export async function saveToken(
   };
 
   if (existing) {
-    db.update(xeroTokens).set(data).where(eq(xeroTokens.userId, userId)).run();
+    await db.update(xeroTokens).set(data).where(eq(xeroTokens.userId, userId)).run();
   } else {
-    db.insert(xeroTokens).values(data).run();
+    await db.insert(xeroTokens).values(data).run();
   }
 }
 
 export async function getValidToken(userId: string): Promise<TokenData | null> {
   return refreshMutex.runExclusive(async () => {
-    const token = db.select().from(xeroTokens).where(eq(xeroTokens.userId, userId)).get();
+    const token = await db.select().from(xeroTokens).where(eq(xeroTokens.userId, userId)).get();
     if (!token) return null;
 
     const now = Math.floor(Date.now() / 1000);

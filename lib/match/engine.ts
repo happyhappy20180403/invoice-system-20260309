@@ -36,8 +36,8 @@ export interface MatchResult {
 
 let fuseIndex: Fuse<HistoryRecord> | null = null;
 
-export function buildIndex(): void {
-  const records = db.select().from(invoiceHistory).all();
+export async function buildIndex(): Promise<void> {
+  const records = await db.select().from(invoiceHistory).all();
   fuseIndex = new Fuse(records, {
     keys: [
       { name: 'project', weight: 2.0 },
@@ -115,12 +115,12 @@ function applyRepairDefaults(results: MatchResult[], isRepair: boolean, isReques
   }
 }
 
-export function fuzzyMatch(
+export async function fuzzyMatch(
   project: string,
   unitNo: string,
   description: string,
-): MatchResult[] {
-  if (!fuseIndex) buildIndex();
+): Promise<MatchResult[]> {
+  if (!fuseIndex) await buildIndex();
 
   console.log('[Match] Input:', { project, unitNo, description });
 
@@ -144,7 +144,7 @@ export function fuzzyMatch(
 
     let candidates: HistoryRecord[] = [];
     for (const projFilter of projectFilters) {
-      candidates = db.select().from(invoiceHistory)
+      candidates = await db.select().from(invoiceHistory)
         .where(and(projFilter, like(invoiceHistory.unitNo, `%${coreUnit}`)))
         .all();
       if (candidates.length > 0) break;
@@ -152,7 +152,7 @@ export function fuzzyMatch(
 
     // If still no match, try unit-only (no project filter)
     if (candidates.length === 0) {
-      candidates = db.select().from(invoiceHistory)
+      candidates = await db.select().from(invoiceHistory)
         .where(like(invoiceHistory.unitNo, `%${coreUnit}`))
         .limit(50)
         .all();
@@ -231,18 +231,18 @@ export function fuzzyMatch(
   return results.map(r => toResult(r.item, 1 - (r.score ?? 1)));
 }
 
-export function getContacts(search?: string) {
+export async function getContacts(search?: string) {
   if (search) {
-    return db.select().from(contactsCache)
+    return await db.select().from(contactsCache)
       .where(like(contactsCache.contactName, `%${search}%`))
       .limit(20)
       .all();
   }
-  return db.select().from(contactsCache).limit(100).all();
+  return await db.select().from(contactsCache).limit(100).all();
 }
 
-export function getAccountCodes() {
-  return db.select().from(accountCodeMappings).all();
+export async function getAccountCodes() {
+  return await db.select().from(accountCodeMappings).all();
 }
 
 export function getTrackingOptions(): { option1: string[]; option2: string[] } {

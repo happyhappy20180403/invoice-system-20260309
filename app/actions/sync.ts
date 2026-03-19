@@ -13,7 +13,7 @@ export async function syncContactsAction() {
   const contacts = await getXeroContacts(xeroUserId);
 
   for (const c of contacts) {
-    db.insert(contactsCache)
+    await db.insert(contactsCache)
       .values({
         contactId: c.ContactID,
         contactName: c.Name,
@@ -42,7 +42,7 @@ export async function syncAccountCodesAction() {
   const accounts = await getXeroAccountCodes(xeroUserId);
 
   for (const a of accounts) {
-    db.insert(accountCodeMappings)
+    await db.insert(accountCodeMappings)
       .values({
         code: a.Code,
         name: a.Name,

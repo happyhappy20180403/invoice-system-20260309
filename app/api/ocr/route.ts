@@ -717,7 +717,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   console.log(`[OCR] "${ocrMethod}" → ${items.length} items from "${uploadedFile.name}"${warnings.length > 0 ? ` (warnings: ${warnings.join('; ')})` : ''}`);
 
   const userId = session.user?.email ?? 'unknown';
-  const insertResult = db
+  const insertResult = await db
     .insert(ocrUploads)
     .values({
       filename: safeFilename,

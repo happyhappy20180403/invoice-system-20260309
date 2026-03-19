@@ -69,7 +69,7 @@ export async function getMetricsSummary(): Promise<MetricsSummary> {
   const dayAgo = unixDaysAgo(1);
 
   // Today invoice count from createdInvoices
-  const todayCountResult = db
+  const todayCountResult = await db
     .select({ count: sql<number>`count(*)` })
     .from(createdInvoices)
     .where(gte(createdInvoices.createdAt, todayStart))
@@ -78,7 +78,7 @@ export async function getMetricsSummary(): Promise<MetricsSummary> {
   const todayCount = todayCountResult?.count ?? 0;
 
   // API calls in last 24h
-  const calls24h = db
+  const calls24h = await db
     .select({
       total: sql<number>`count(*)`,
       success: sql<number>`sum(case when status_code >= 200 and status_code < 300 then 1 else 0 end)`,
@@ -98,7 +98,7 @@ export async function getMetricsSummary(): Promise<MetricsSummary> {
 }
 
 export async function getRecentApiCalls(limit = 20): Promise<RecentApiCall[]> {
-  const rows = db
+  const rows = await db
     .select()
     .from(apiMetrics)
     .orderBy(desc(apiMetrics.timestamp))
@@ -111,7 +111,7 @@ export async function getRecentApiCalls(limit = 20): Promise<RecentApiCall[]> {
 export async function getSloStatus(): Promise<SloStatus> {
   const windowStart = unixDaysAgo(1);
 
-  const stats = db
+  const stats = await db
     .select({
       total: sql<number>`count(*)`,
       success: sql<number>`sum(case when status_code >= 200 and status_code < 300 then 1 else 0 end)`,
@@ -128,7 +128,7 @@ export async function getSloStatus(): Promise<SloStatus> {
   let p95Ms = 0;
   if (total > 0) {
     const p95Offset = Math.max(0, Math.floor(total * 0.95) - 1);
-    const p95Row = db
+    const p95Row = await db
       .select({ ms: apiMetrics.responseTimeMs })
       .from(apiMetrics)
       .where(gte(apiMetrics.timestamp, windowStart))
@@ -186,7 +186,7 @@ export async function getTokenHealth(): Promise<TokenHealth> {
     };
   }
 
-  const token = db
+  const token = await db
     .select()
     .from(xeroTokens)
     .where(eq(xeroTokens.userId, xeroUserId))
@@ -219,7 +219,7 @@ export async function getTokenHealth(): Promise<TokenHealth> {
 export async function getDailyInvoiceCounts(days = 30): Promise<DailyInvoiceCount[]> {
   const since = unixDaysAgo(days);
 
-  const rows = db
+  const rows = await db
     .select({
       date: sql<string>`date(created_at, 'unixepoch')`,
       count: sql<number>`count(*)`,

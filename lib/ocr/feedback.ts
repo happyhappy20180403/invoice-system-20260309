@@ -36,7 +36,7 @@ export async function saveFeedback(payload: FeedbackPayload): Promise<void> {
   const { uploadId, corrections, confirmedItems } = payload;
 
   // Fetch existing record
-  const existing = db
+  const existing = await db
     .select()
     .from(ocrUploads)
     .where(eq(ocrUploads.id, uploadId))
@@ -57,7 +57,7 @@ export async function saveFeedback(payload: FeedbackPayload): Promise<void> {
     },
   };
 
-  db.update(ocrUploads)
+  await db.update(ocrUploads)
     .set({
       parsedData: JSON.stringify(updatedParsed),
       status: 'confirmed',
@@ -73,7 +73,7 @@ export async function markUploadError(
   uploadId: number,
   reason: string,
 ): Promise<void> {
-  db.update(ocrUploads)
+  await db.update(ocrUploads)
     .set({ status: 'error', parsedData: JSON.stringify({ error: reason }) })
     .where(eq(ocrUploads.id, uploadId))
     .run();
@@ -83,11 +83,11 @@ export async function markUploadError(
  * Retrieve aggregated correction patterns for analysis.
  * Returns a frequency map: { field -> { original -> corrected -> count } }
  */
-export function getCorrectionPatterns(): Record<
+export async function getCorrectionPatterns(): Promise<Record<
   string,
   Record<string, Record<string, number>>
-> {
-  const uploads = db
+>> {
+  const uploads = await db
     .select({ parsedData: ocrUploads.parsedData })
     .from(ocrUploads)
     .all();

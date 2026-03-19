@@ -79,8 +79,8 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
     throw new Error('Unauthorized');
   }
 
-  return rows.map((row, idx) => {
-    const matches = fuzzyMatch(row.project, row.unitNo, row.description);
+  return Promise.all(rows.map(async (row, idx) => {
+    const matches = await fuzzyMatch(row.project, row.unitNo, row.description);
     const best = matches[0];
 
     return {
@@ -98,7 +98,7 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
       dueDate: lastDayOfMonth(row.date),
       score: best?.score ?? 0,
     };
-  });
+  }));
 }
 
 // batchCreateInvoicesAction: 最大50件ずつXero APIに送信
@@ -163,7 +163,7 @@ export async function batchCreateInvoicesAction(
 
         if (created && created.InvoiceID) {
           try {
-            db.insert(createdInvoices).values({
+            await db.insert(createdInvoices).values({
               xeroInvoiceId: created.InvoiceID,
               invoiceNumber: created.InvoiceNumber ?? null,
               contactName: row.contactName,

@@ -102,7 +102,7 @@ export async function createInvoiceAction(formData: InvoiceFormData) {
     const result = await createXeroInvoice(xeroUserId, payload);
 
     // Audit log
-    db.insert(createdInvoices).values({
+    await db.insert(createdInvoices).values({
       xeroInvoiceId: result.InvoiceID,
       invoiceNumber: result.InvoiceNumber,
       contactName: data.contactName,
@@ -181,7 +181,7 @@ export async function createCreditNoteAction(formData: CreditNoteFormData) {
     const result = await createXeroCreditNote(xeroUserId, payload);
 
     // Audit log (reuse createdInvoices table with status indicator)
-    db.insert(createdInvoices)
+    await db.insert(createdInvoices)
       .values({
         xeroInvoiceId: result.CreditNoteID,
         invoiceNumber: result.CreditNoteNumber,
