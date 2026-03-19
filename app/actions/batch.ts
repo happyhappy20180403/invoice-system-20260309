@@ -6,6 +6,21 @@ import { createXeroBatchInvoices, type XeroInvoicePayload } from '@/lib/xero/xer
 import { db } from '@/lib/db';
 import { createdInvoices } from '@/lib/db/schema';
 
+const TAX_TYPE_MAP: Record<string, string> = {
+  'Tax Exempt': 'NONE',
+  'tax exempt': 'NONE',
+  'Tax Exempt (0%)': 'NONE',
+  'No Tax': 'NONE',
+  'Tax on Sales': 'OUTPUT',
+  'Tax on Purchases': 'INPUT',
+  'Service Tax': 'TAX002',
+  'SST 8%': 'TAX003',
+};
+
+function resolveXeroTaxType(displayName: string): string {
+  return TAX_TYPE_MAP[displayName] ?? displayName;
+}
+
 export interface BatchRow {
   date: string;
   project: string;
@@ -50,7 +65,7 @@ export async function batchMatchAction(rows: BatchRow[]): Promise<BatchRowWithMa
     const best = matches[0];
 
     const dueDate = new Date(row.date);
-    dueDate.setDate(dueDate.getDate() + 30);
+    dueDate.setMonth(dueDate.getMonth() + 1, 0); // last day of same month
 
     return {
       ...row,
@@ -102,7 +117,7 @@ export async function batchCreateInvoicesAction(
       }
 
       return {
-        Type: row.invoiceType,
+        Type: 'ACCREC',
         Contact: { Name: row.contactName },
         Date: row.date,
         DueDate: row.dueDate,
@@ -112,7 +127,7 @@ export async function batchCreateInvoicesAction(
             Quantity: row.quantity,
             UnitAmount: row.finalPrice / row.quantity,
             AccountCode: row.accountCode,
-            TaxType: row.taxType,
+            TaxType: resolveXeroTaxType(row.taxType),
             ...(tracking.length > 0 ? { Tracking: tracking } : {}),
           },
         ],

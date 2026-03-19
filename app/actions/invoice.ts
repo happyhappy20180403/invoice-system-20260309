@@ -11,6 +11,22 @@ import { db } from '@/lib/db';
 import { createdInvoices } from '@/lib/db/schema';
 import { z } from 'zod';
 
+// Map display names to Xero API tax type codes
+const TAX_TYPE_MAP: Record<string, string> = {
+  'Tax Exempt': 'NONE',
+  'tax exempt': 'NONE',
+  'Tax Exempt (0%)': 'NONE',
+  'No Tax': 'NONE',
+  'Tax on Sales': 'OUTPUT',
+  'Tax on Purchases': 'INPUT',
+  'Service Tax': 'TAX002',
+  'SST 8%': 'TAX003',
+};
+
+function resolveXeroTaxType(displayName: string): string {
+  return TAX_TYPE_MAP[displayName] ?? displayName;
+}
+
 const InvoiceFormSchema = z.object({
   date: z.string().min(1),
   dueDate: z.string().min(1),
@@ -47,14 +63,14 @@ export async function createInvoiceAction(formData: InvoiceFormData) {
 
   const tracking: Array<{ Name: string; Option: string }> = [];
   if (data.trackingOption1) {
-    tracking.push({ Name: 'TrackingOption1', Option: data.trackingOption1 });
+    tracking.push({ Name: 'NATURE OF ACCOUNT', Option: data.trackingOption1 });
   }
   if (data.trackingOption2) {
-    tracking.push({ Name: 'TrackingOption2', Option: data.trackingOption2 });
+    tracking.push({ Name: 'Categories/Projects', Option: data.trackingOption2 });
   }
 
   const payload: XeroInvoicePayload = {
-    Type: data.invoiceType,
+    Type: 'ACCREC',
     Contact: { Name: data.contactName },
     Date: data.date,
     DueDate: data.dueDate,
@@ -64,7 +80,7 @@ export async function createInvoiceAction(formData: InvoiceFormData) {
         Quantity: data.quantity,
         UnitAmount: data.unitAmount ?? data.finalPrice / data.quantity,
         AccountCode: data.accountCode,
-        TaxType: data.taxType,
+        TaxType: resolveXeroTaxType(data.taxType),
         ...(tracking.length > 0 ? { Tracking: tracking } : {}),
       },
     ],
@@ -72,6 +88,8 @@ export async function createInvoiceAction(formData: InvoiceFormData) {
     Status: 'DRAFT',
     LineAmountTypes: 'Exclusive',
   };
+
+  console.log('[Invoice] Payload:', JSON.stringify(payload, null, 2));
 
   try {
     const result = await createXeroInvoice(xeroUserId, payload);

@@ -248,6 +248,7 @@ export default function InvoiceDashboard() {
                   </button>
                 </div>
                 <InvoicePreview
+                  key={ocrPreviewIndex}
                   data={ocrPreviews[ocrPreviewIndex]}
                   onBack={handleOcrPreviewBack}
                   onCreated={handleOcrItemCreated}

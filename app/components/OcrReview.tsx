@@ -101,7 +101,7 @@ export default function OcrReview({
         const best = suggestions[0];
 
         const dueDate = new Date(item.editDate);
-        dueDate.setDate(dueDate.getDate() + 30);
+        dueDate.setMonth(dueDate.getMonth() + 1, 0); // last day of same month
 
         previews.push({
           date: item.editDate,

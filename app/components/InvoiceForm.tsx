@@ -25,7 +25,7 @@ export default function InvoiceForm({ onPreview }: Props) {
       const bestMatch = suggestions[0];
 
       const dueDate = new Date(date);
-      dueDate.setDate(dueDate.getDate() + 30);
+      dueDate.setMonth(dueDate.getMonth() + 1, 0); // last day of same month
 
       const previewData: PreviewData = {
         date,
