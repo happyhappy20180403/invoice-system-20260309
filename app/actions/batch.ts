@@ -110,10 +110,10 @@ export async function batchCreateInvoicesAction(
     const payloads: XeroInvoicePayload[] = chunk.map(row => {
       const tracking: Array<{ Name: string; Option: string }> = [];
       if (row.trackingOption1) {
-        tracking.push({ Name: 'TrackingOption1', Option: row.trackingOption1 });
+        tracking.push({ Name: 'NATURE OF ACCOUNT', Option: row.trackingOption1 });
       }
       if (row.trackingOption2) {
-        tracking.push({ Name: 'TrackingOption2', Option: row.trackingOption2 });
+        tracking.push({ Name: 'Categories/Projects', Option: row.trackingOption2 });
       }
 
       return {

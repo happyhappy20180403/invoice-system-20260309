@@ -9,6 +9,7 @@ import FileUpload from './FileUpload';
 import OcrReview from './OcrReview';
 import type { InvoiceFormData } from '@/app/actions/invoice';
 import type { BatchRowWithMatch } from '@/app/actions/batch';
+import type { MatchResult } from '@/lib/match/engine';
 import type { ParsedItem } from '@/lib/ocr/parser';
 
 export type PreviewData = InvoiceFormData & {
@@ -29,7 +30,7 @@ export type PreviewData = InvoiceFormData & {
 
 type Tab = 'single' | 'batch' | 'ocr';
 type BatchPhase = 'input' | 'preview';
-type OcrPhase = 'upload' | 'review' | 'preview';
+type OcrPhase = 'upload' | 'review' | 'batch-preview';
 
 interface OcrResult {
   uploadId: number;
@@ -58,8 +59,7 @@ export default function InvoiceDashboard() {
   const [ocrPhase, setOcrPhase] = useState<OcrPhase>('upload');
   const [ocrResult, setOcrResult] = useState<OcrResult | null>(null);
   const [ocrError, setOcrError] = useState<string | null>(null);
-  const [ocrPreviews, setOcrPreviews] = useState<PreviewData[]>([]);
-  const [ocrPreviewIndex, setOcrPreviewIndex] = useState(0);
+  const [ocrBatchRows, setOcrBatchRows] = useState<BatchRowWithMatch[]>([]);
   const [ocrCreatedCount, setOcrCreatedCount] = useState(0);
 
   // Single handlers
@@ -88,29 +88,36 @@ export default function InvoiceDashboard() {
   };
   const handleOcrError = (message: string) => setOcrError(message);
   const handleOcrConfirm = (previews: PreviewData[]) => {
-    setOcrPreviews(previews);
-    setOcrPreviewIndex(0);
+    // Convert PreviewData[] to BatchRowWithMatch[] for bulk processing
+    const rows: BatchRowWithMatch[] = previews.map((p, idx) => ({
+      date: p.date,
+      project: p.project,
+      unitNo: p.unitNo,
+      description: p.description,
+      finalPrice: p.finalPrice,
+      rowIndex: idx,
+      matches: p.suggestions as MatchResult[],
+      contactName: p.contactName,
+      accountCode: p.accountCode,
+      taxType: p.taxType,
+      invoiceType: p.invoiceType ?? 'ACCREC',
+      trackingOption1: p.trackingOption1 ?? '',
+      trackingOption2: p.trackingOption2 ?? '',
+      reference: p.reference ?? '',
+      quantity: p.quantity,
+      dueDate: p.dueDate,
+      score: p.suggestions[0]?.score ?? 0,
+    }));
+    setOcrBatchRows(rows);
     setOcrCreatedCount(0);
-    setOcrPhase('preview');
+    setOcrPhase('batch-preview');
   };
-  const handleOcrItemCreated = () => {
-    setOcrCreatedCount(c => c + 1);
-    const nextIndex = ocrPreviewIndex + 1;
-    if (nextIndex < ocrPreviews.length) {
-      setOcrPreviewIndex(nextIndex);
-    } else {
-      setOcrPhase('upload');
-      setOcrResult(null);
-      setOcrPreviews([]);
-    }
-  };
-  const handleOcrPreviewBack = () => setOcrPhase('review');
+  const handleOcrBatchBack = () => setOcrPhase('review');
   const resetOcr = () => {
     setOcrPhase('upload');
     setOcrResult(null);
     setOcrError(null);
-    setOcrPreviews([]);
-    setOcrPreviewIndex(0);
+    setOcrBatchRows([]);
     setOcrCreatedCount(0);
   };
 
@@ -235,37 +242,9 @@ export default function InvoiceDashboard() {
             </div>
           )}
 
-          {/* Preview phase — 2-column layout */}
-          {ocrPhase === 'preview' && ocrPreviews.length > 0 && (
-            <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-              <div className="rounded-xl bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">
-                    Invoice {ocrPreviewIndex + 1} of {ocrPreviews.length}
-                  </h2>
-                  <button onClick={handleOcrPreviewBack} className="text-sm text-blue-600 hover:underline">
-                    Back to Review
-                  </button>
-                </div>
-                <InvoicePreview
-                  key={ocrPreviewIndex}
-                  data={ocrPreviews[ocrPreviewIndex]}
-                  onBack={handleOcrPreviewBack}
-                  onCreated={handleOcrItemCreated}
-                />
-              </div>
-              <div className="rounded-xl border-2 border-dashed border-gray-200 bg-white p-8">
-                <div className="text-sm text-gray-500">
-                  <h3 className="mb-2 text-base font-semibold text-gray-700">Creating Invoices</h3>
-                  <p>Processing item {ocrPreviewIndex + 1} of {ocrPreviews.length}.</p>
-                  {ocrCreatedCount > 0 && (
-                    <p className="mt-2 font-medium text-green-600">
-                      {ocrCreatedCount} created so far.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+          {/* Batch preview phase — full width table with bulk submit */}
+          {ocrPhase === 'batch-preview' && ocrBatchRows.length > 0 && (
+            <BatchPreview rows={ocrBatchRows} onBack={handleOcrBatchBack} />
           )}
         </>
       )}

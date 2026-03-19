@@ -114,9 +114,14 @@ export default function BatchPreview({ rows, onBack }: Props) {
   }, [editedRows, retryIndices]);
 
   const failedIndices = results?.filter(r => !r.success && r.rowIndex >= 0).map(r => r.rowIndex) ?? [];
+  const disabled = !!results;
+
+  // Compact input style
+  const inputCls = (w: string) =>
+    `${w} rounded border border-gray-200 px-1 py-0.5 text-xs focus:border-blue-400 focus:outline-none disabled:border-transparent disabled:bg-transparent`;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <BatchResultBar
         results={results}
         rows={editedRows}
@@ -131,11 +136,11 @@ export default function BatchPreview({ rows, onBack }: Props) {
         onBack={onBack}
       />
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-        <table className="w-full text-sm">
+      <div className="rounded-xl bg-white shadow-sm">
+        <table className="w-full table-fixed text-xs">
           <thead>
-            <tr className="border-b bg-gray-50 text-left text-xs font-medium text-gray-500">
-              <th className="px-3 py-3">
+            <tr className="border-b bg-gray-50 text-left text-[11px] font-medium text-gray-500">
+              <th className="w-8 px-1 py-2 text-center">
                 <input
                   type="checkbox"
                   checked={selected.size === editedRows.length && editedRows.length > 0}
@@ -143,15 +148,21 @@ export default function BatchPreview({ rows, onBack }: Props) {
                   className="rounded"
                 />
               </th>
-              <th className="px-3 py-3">#</th>
-              <th className="px-3 py-3">Date</th>
-              <th className="px-3 py-3">Project / Unit</th>
-              <th className="px-3 py-3">Description</th>
-              <th className="px-3 py-3 text-right">Price</th>
-              <th className="px-3 py-3">Contact Name</th>
-              <th className="px-3 py-3">Acct Code</th>
-              <th className="px-3 py-3">Score</th>
-              <th className="px-3 py-3">Status</th>
+              <th className="w-7 px-1 py-2 text-center">#</th>
+              <th className="w-[80px] px-1 py-2">Date</th>
+              <th className="w-[100px] px-1 py-2">Project</th>
+              <th className="w-[70px] px-1 py-2">Unit</th>
+              <th className="px-1 py-2">Description</th>
+              <th className="w-[70px] px-1 py-2 text-right">Price</th>
+              <th className="w-[130px] px-1 py-2">Contact</th>
+              <th className="w-[55px] px-1 py-2">Acct</th>
+              <th className="w-[80px] px-1 py-2">Tax</th>
+              <th className="w-[70px] px-1 py-2">Track1</th>
+              <th className="w-[70px] px-1 py-2">Track2</th>
+              <th className="w-[70px] px-1 py-2">Ref</th>
+              <th className="w-[100px] px-1 py-2">Due</th>
+              <th className="w-[40px] px-1 py-2 text-center">%</th>
+              <th className="w-[70px] px-1 py-2">Status</th>
             </tr>
           </thead>
           <tbody>
@@ -172,65 +183,78 @@ export default function BatchPreview({ rows, onBack }: Props) {
 
               return (
                 <tr key={row.rowIndex} className={`border-b last:border-0 transition ${rowBg}`}>
-                  <td className="px-3 py-2">
+                  <td className="px-1 py-1 text-center">
                     <input
                       type="checkbox"
                       checked={selected.has(row.rowIndex)}
                       onChange={() => toggleSelect(row.rowIndex)}
-                      disabled={!!results}
+                      disabled={disabled}
                       className="rounded"
                     />
                   </td>
-                  <td className="px-3 py-2 text-gray-400">{row.rowIndex + 1}</td>
-                  <td className="px-3 py-2 text-xs">{row.date}</td>
-                  <td className="px-3 py-2">
-                    <div className="font-medium">{row.project}</div>
-                    <div className="text-xs text-gray-500">{row.unitNo}</div>
+                  <td className="px-1 py-1 text-center text-gray-400">{row.rowIndex + 1}</td>
+                  <td className="px-1 py-1 text-[11px]">{row.date}</td>
+                  <td className="px-1 py-1 truncate font-medium" title={row.project}>{row.project}</td>
+                  <td className="px-1 py-1 truncate font-mono" title={row.unitNo}>{row.unitNo}</td>
+                  <td className="px-1 py-1">
+                    <div className="truncate" title={row.description}>{row.description}</div>
                   </td>
-                  <td className="max-w-40 px-3 py-2">
-                    <div className="truncate text-xs" title={row.description}>{row.description}</div>
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs">
+                  <td className="px-1 py-1 text-right tabular-nums">
                     {row.finalPrice.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
                   </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      value={row.contactName}
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.contactName}
                       onChange={e => updateRow(row.rowIndex, 'contactName', e.target.value)}
-                      disabled={!!results}
-                      className="w-32 rounded border border-gray-200 px-1.5 py-1 text-xs focus:border-blue-400 focus:outline-none disabled:border-transparent disabled:bg-transparent"
-                    />
+                      disabled={disabled} className={inputCls('w-full')} />
                   </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="text"
-                      value={row.accountCode}
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.accountCode}
                       onChange={e => updateRow(row.rowIndex, 'accountCode', e.target.value)}
-                      disabled={!!results}
-                      className="w-20 rounded border border-gray-200 px-1.5 py-1 text-xs focus:border-blue-400 focus:outline-none disabled:border-transparent disabled:bg-transparent"
-                    />
+                      disabled={disabled} className={inputCls('w-full')} />
                   </td>
-                  <td className="px-3 py-2">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isLowScore ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-                      {(row.score * 100).toFixed(0)}%
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.taxType}
+                      onChange={e => updateRow(row.rowIndex, 'taxType', e.target.value)}
+                      disabled={disabled} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.trackingOption1}
+                      onChange={e => updateRow(row.rowIndex, 'trackingOption1', e.target.value)}
+                      disabled={disabled} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.trackingOption2}
+                      onChange={e => updateRow(row.rowIndex, 'trackingOption2', e.target.value)}
+                      disabled={disabled} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="text" value={row.reference}
+                      onChange={e => updateRow(row.rowIndex, 'reference', e.target.value)}
+                      disabled={disabled} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1">
+                    <input type="date" value={row.dueDate}
+                      onChange={e => updateRow(row.rowIndex, 'dueDate', e.target.value)}
+                      disabled={disabled} className={inputCls('w-full')} />
+                  </td>
+                  <td className="px-1 py-1 text-center">
+                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isLowScore ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
+                      {(row.score * 100).toFixed(0)}
                     </span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="px-1 py-1">
                     {result ? (
                       result.success ? (
-                        <div>
-                          <span className="text-xs font-semibold text-green-600">Created</span>
-                          <div className="text-xs text-gray-400">{result.invoiceNumber || result.invoiceId}</div>
-                        </div>
+                        <span className="text-[10px] font-semibold text-green-600" title={result.invoiceNumber || result.invoiceId}>
+                          Created
+                        </span>
                       ) : (
-                        <div>
-                          <span className="text-xs font-semibold text-red-600">Failed</span>
-                          <div className="max-w-32 truncate text-xs text-red-400" title={result.error}>{result.error}</div>
-                        </div>
+                        <span className="text-[10px] font-semibold text-red-600" title={result.error}>
+                          Failed
+                        </span>
                       )
                     ) : (
-                      <span className="text-xs text-gray-400">Pending</span>
+                      <span className="text-[10px] text-gray-400">Pending</span>
                     )}
                   </td>
                 </tr>
