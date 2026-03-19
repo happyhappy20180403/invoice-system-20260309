@@ -20,6 +20,7 @@ interface Props {
   items: ParsedItem[];
   isMock: boolean;
   ocrMethod?: string;
+  warnings?: string[];
   onConfirm: (items: PreviewData[]) => void;
   onBack: () => void;
 }
@@ -48,6 +49,7 @@ export default function OcrReview({
   items,
   isMock,
   ocrMethod,
+  warnings,
   onConfirm,
   onBack,
 }: Props) {
@@ -76,6 +78,14 @@ export default function OcrReview({
   const selectedItems = editableItems.filter(item => item.selected);
   const highConfCount = editableItems.filter(i => i.confidence >= 0.75).length;
   const lowConfCount = editableItems.filter(i => i.confidence < 0.45).length;
+
+  // Detect low quality: Gemini failed and fell back to Tesseract with poor results
+  const avgConfidence = editableItems.length > 0
+    ? editableItems.reduce((sum, i) => sum + i.confidence, 0) / editableItems.length
+    : 0;
+  const hasLowQuality = ocrMethod !== 'gemini-vision' && ocrMethod !== 'mock' && (
+    avgConfidence < 0.6 || warnings?.some(w => w.includes('LOW QUALITY')) || false
+  );
 
   const handleConfirm = useCallback(async () => {
     if (selectedItems.length === 0) {
@@ -196,8 +206,37 @@ export default function OcrReview({
         </div>
       </div>
 
-      {/* Tesseract accuracy warning */}
-      {ocrMethod && ocrMethod !== 'gemini-vision' && ocrMethod !== 'mock' && (
+      {/* CRITICAL: Low quality / Gemini failure warning */}
+      {hasLowQuality && (
+        <div className="rounded-lg border-2 border-red-400 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <div className="flex items-center gap-2 font-bold">
+            <svg className="h-5 w-5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            LOW ACCURACY - Data may be incorrect
+          </div>
+          <p className="mt-1.5">
+            Gemini Vision API failed and the system fell back to local Tesseract OCR, which cannot accurately read this document.
+            <strong> Please verify every field carefully before confirming.</strong>
+          </p>
+          <p className="mt-1 text-xs text-red-700">
+            To fix: check your <code className="rounded bg-red-100 px-1">GEMINI_API_KEY</code> in .env.local, then re-upload the file.
+          </p>
+        </div>
+      )}
+
+      {/* Warnings from OCR pipeline (non-critical) */}
+      {warnings && warnings.length > 0 && !hasLowQuality && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
+          <strong>OCR Notice:</strong>
+          <ul className="mt-1 list-inside list-disc">
+            {warnings.map((w, i) => <li key={i}>{w}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {/* Tesseract accuracy warning (when no critical warnings) */}
+      {ocrMethod && ocrMethod !== 'gemini-vision' && ocrMethod !== 'mock' && !hasLowQuality && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-800">
           <strong>Accuracy notice:</strong> Using local OCR ({ocrMethod}). For higher accuracy,
           add <code className="rounded bg-amber-100 px-1">GEMINI_API_KEY</code> to .env.local
@@ -386,14 +425,23 @@ export default function OcrReview({
           type="button"
           onClick={handleConfirm}
           disabled={isConfirming || selectedItems.length === 0}
-          className="flex-1 rounded-lg bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-gray-300"
+          className={[
+            'flex-1 rounded-lg px-6 py-3 font-semibold text-white transition focus:outline-none focus:ring-4 disabled:cursor-not-allowed disabled:bg-gray-300',
+            hasLowQuality
+              ? 'bg-amber-500 hover:bg-amber-600 focus:ring-amber-200'
+              : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-200',
+          ].join(' ')}
         >
           {isConfirming
             ? 'Matching with past invoices...'
-            : `Confirm ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''} & Match`}
+            : hasLowQuality
+              ? `Confirm ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''} (Low Accuracy - Verify First!)`
+              : `Confirm ${selectedItems.length} Item${selectedItems.length !== 1 ? 's' : ''} & Match`}
         </button>
         <p className="text-xs text-gray-400 max-w-xs">
-          Matches against past invoice history to auto-fill contact, account code, tax type etc.
+          {hasLowQuality
+            ? 'Low accuracy mode. Please verify all fields manually before confirming.'
+            : 'Matches against past invoice history to auto-fill contact, account code, tax type etc.'}
         </p>
       </div>
     </div>

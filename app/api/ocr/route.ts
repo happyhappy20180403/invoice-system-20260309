@@ -94,6 +94,27 @@ interface GeminiExtractedRow {
   finalPrice: number | null;
 }
 
+/** Extract the non-thinking text from Gemini response parts (handles 2.5 thinking mode) */
+function extractGeminiText(
+  data: { candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }> },
+): string {
+  const parts = data.candidates?.[0]?.content?.parts ?? [];
+  // Find the last non-thinking part (Gemini 2.5 puts thinking first, response last)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (!parts[i].thought && parts[i].text) {
+      return parts[i].text!;
+    }
+  }
+  // Fallback: return first part text
+  return parts[0]?.text ?? '';
+}
+
+/** Parse JSON from Gemini text, stripping markdown fences */
+function parseGeminiJson(text: string): GeminiExtractedRow[] {
+  const jsonStr = text.replace(/^```json?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+  return JSON.parse(jsonStr);
+}
+
 const GEMINI_EXTRACTION_PROMPT = `You are a precise data extraction engine for property repair work orders. Read the scanned table carefully, character by character, and extract ALL line items.
 
 TABLE COLUMNS (left to right):
@@ -141,6 +162,81 @@ CRITICAL RULES:
 Output format:
 [{"date":"2026-02-03","project":"PONDEROSA","unitNo":"B-10-03","description":"COOKER HOOD REPAIR","costAmount":740,"finalPrice":1180},...]`;
 
+/** Call Gemini API for a single page image with retry */
+async function callGeminiPage(
+  base64: string,
+  apiKey: string,
+  pageIdx: number,
+  maxRetries = 1,
+): Promise<GeminiExtractedRow[]> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      const delay = 2000 * attempt; // 2s, 4s...
+      console.log(`[OCR] Gemini retry ${attempt}/${maxRetries} for page ${pageIdx + 1} after ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  { text: GEMINI_EXTRACTION_PROMPT },
+                  {
+                    inlineData: {
+                      mimeType: 'image/png',
+                      data: base64,
+                    },
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0,
+              maxOutputTokens: 8192,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const body = await response.text();
+        const status = response.status;
+        // Retry on 429 (rate limit) or 5xx (server error)
+        if ((status === 429 || status >= 500) && attempt < maxRetries) {
+          lastError = new Error(`Gemini API ${status}: ${body.substring(0, 200)}`);
+          console.warn(`[OCR] Gemini transient error ${status}, will retry...`);
+          continue;
+        }
+        throw new Error(`Gemini API error ${status}: ${body.substring(0, 300)}`);
+      }
+
+      const data = await response.json();
+      const text = extractGeminiText(data);
+      console.log(`[OCR] Gemini page ${pageIdx + 1} response: ${text.length} chars, first 200: ${text.substring(0, 200)}`);
+
+      return parseGeminiJson(text);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries && (String(err).includes('fetch') || String(err).includes('network'))) {
+        console.warn(`[OCR] Gemini network error, will retry: ${String(err)}`);
+        continue;
+      }
+      throw lastError;
+    }
+  }
+
+  throw lastError ?? new Error('Gemini: unknown error after retries');
+}
+
 async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY not set');
@@ -150,55 +246,12 @@ async function extractWithGemini(pageImages: Buffer[]): Promise<ParsedItem[]> {
   for (let pageIdx = 0; pageIdx < pageImages.length; pageIdx++) {
     const base64 = pageImages[pageIdx].toString('base64');
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                { text: GEMINI_EXTRACTION_PROMPT },
-                {
-                  inlineData: {
-                    mimeType: 'image/png',
-                    data: base64,
-                  },
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            temperature: 0,
-            maxOutputTokens: 8192,
-          },
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Gemini API error ${response.status}: ${body}`);
-    }
-
-    const data = (await response.json()) as {
-      candidates?: Array<{
-        content?: { parts?: Array<{ text?: string }> };
-      }>;
-    };
-
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    console.log(`[OCR] Gemini page ${pageIdx + 1} response: ${text.length} chars`);
-
-    // Parse JSON from response (strip markdown fences if present)
-    const jsonStr = text.replace(/^```json?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
     let rows: GeminiExtractedRow[];
     try {
-      rows = JSON.parse(jsonStr);
-    } catch {
-      console.error(`[OCR] Gemini returned non-JSON for page ${pageIdx + 1}:`, text.substring(0, 200));
-      continue;
+      rows = await callGeminiPage(base64, apiKey, pageIdx);
+    } catch (parseErr) {
+      console.error(`[OCR] Gemini failed for page ${pageIdx + 1}:`, String(parseErr));
+      throw parseErr; // Propagate so caller knows Gemini failed
     }
 
     for (const row of rows) {
@@ -291,37 +344,8 @@ async function extractImageWithGemini(buffer: Buffer, mimeType: string): Promise
 
   const base64 = buffer.toString('base64');
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: GEMINI_EXTRACTION_PROMPT },
-              { inlineData: { mimeType, data: base64 } },
-            ],
-          },
-        ],
-        generationConfig: { temperature: 0, maxOutputTokens: 8192 },
-      }),
-    },
-  );
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Gemini API error ${response.status}: ${body}`);
-  }
-
-  const data = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-  const jsonStr = text.replace(/^```json?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-  const rows: GeminiExtractedRow[] = JSON.parse(jsonStr);
+  // Reuse the same retry-capable helper (treat image as "page 0")
+  const rows = await callGeminiPage(base64, apiKey, 0);
 
   return rows.map(row => {
     const amount = typeof row.finalPrice === 'number' ? row.finalPrice
@@ -413,8 +437,9 @@ async function runOcr(
   buffer: Buffer,
   mimeType: string,
   filename: string,
-): Promise<{ items: ParsedItem[]; rawText: string; method: string }> {
+): Promise<{ items: ParsedItem[]; rawText: string; method: string; warnings: string[] }> {
   const isPdf = mimeType === 'application/pdf';
+  const warnings: string[] = [];
 
   // Render PDF pages once (shared between Gemini and Tesseract paths)
   let pageImages: Buffer[] | null = null;
@@ -426,8 +451,13 @@ async function runOcr(
     }
   }
 
+  // Track whether Gemini was attempted and why it failed
+  let geminiAttempted = false;
+  let geminiFailReason = '';
+
   // 1. Gemini Vision — structured JSON extraction (best accuracy)
   if (process.env.GEMINI_API_KEY) {
+    geminiAttempted = true;
     console.log(`[OCR] Using Gemini Vision for "${filename}"`);
     try {
       let items: ParsedItem[];
@@ -440,12 +470,20 @@ async function runOcr(
         const rawText = items.map(i =>
           `${i.date} | ${i.project} | ${i.unitNo} | ${i.description} | RM ${i.amount ?? '?'}`
         ).join('\n');
-        return { items, rawText, method: 'gemini-vision' };
+        return { items, rawText, method: 'gemini-vision', warnings };
       }
-      console.warn(`[OCR] Gemini returned 0 items for "${filename}"`);
+      geminiFailReason = `Gemini returned 0 items — the image may not contain a recognizable table`;
+      console.warn(`[OCR] ${geminiFailReason}`);
+      warnings.push(geminiFailReason);
     } catch (err) {
-      console.error(`[OCR] Gemini failed for "${filename}":`, err);
+      geminiFailReason = String(err).replace(/key=AI[^\s&"']*/gi, 'key=***');
+      const msg = `Gemini Vision failed (with retry): ${geminiFailReason}`;
+      console.error(`[OCR] ${msg}`);
+      warnings.push(msg);
     }
+  } else {
+    geminiFailReason = 'GEMINI_API_KEY is not set';
+    warnings.push('GEMINI_API_KEY is not set. Using low-accuracy local OCR.');
   }
 
   // 2. Google Cloud Vision → text → parse
@@ -454,7 +492,7 @@ async function runOcr(
     try {
       const text = await extractVisionText(buffer);
       if (text.trim().length > 50) {
-        return { items: parseOcrText(text).items, rawText: text, method: 'google-vision' };
+        return { items: parseOcrText(text).items, rawText: text, method: 'google-vision', warnings };
       }
     } catch (err) {
       console.warn(`[OCR] Cloud Vision failed:`, err);
@@ -469,7 +507,7 @@ async function runOcr(
       const meaningful = text.replace(/[\s\r\n\t\f\v\x00-\x1f]+/g, '');
       console.log(`[OCR] pdf-parse: meaningful=${meaningful.length} chars`);
       if (meaningful.length > 50) {
-        return { items: parseOcrText(text).items, rawText: text, method: 'pdf-parse' };
+        return { items: parseOcrText(text).items, rawText: text, method: 'pdf-parse', warnings };
       }
     } catch (err) {
       console.warn(`[OCR] pdf-parse failed:`, err);
@@ -484,7 +522,17 @@ async function runOcr(
       const meaningful = text.replace(/[\s\r\n\t\f\v]+/g, '');
       console.log(`[OCR] Tesseract: meaningful=${meaningful.length} chars`);
       if (meaningful.length > 20) {
-        return { items: parseOcrText(text).items, rawText: text, method: 'mupdf+tesseract' };
+        const parsedItems = parseOcrText(text).items;
+        const { avgConfidence, qualityOk } = assessQuality(parsedItems);
+
+        if (geminiAttempted) {
+          warnings.push(`Gemini Vision failed: ${geminiFailReason}. Fell back to local Tesseract OCR.`);
+        }
+        warnings.push(`Local OCR (Tesseract) accuracy is limited. Average confidence: ${Math.round(avgConfidence * 100)}%.`);
+        if (!qualityOk) {
+          warnings.push('LOW QUALITY WARNING: Results are likely inaccurate. Please verify every field carefully or re-upload after checking your GEMINI_API_KEY.');
+        }
+        return { items: parsedItems, rawText: text, method: 'mupdf+tesseract', warnings };
       }
     } catch (err) {
       console.error(`[OCR] Tesseract failed:`, err);
@@ -496,7 +544,17 @@ async function runOcr(
     console.log(`[OCR] Using Tesseract.js for image "${filename}"`);
     try {
       const text = await extractImageText(buffer);
-      return { items: parseOcrText(text).items, rawText: text, method: 'tesseract' };
+      const parsedItems = parseOcrText(text).items;
+      const { avgConfidence, qualityOk } = assessQuality(parsedItems);
+
+      if (geminiAttempted) {
+        warnings.push(`Gemini Vision failed: ${geminiFailReason}. Fell back to local Tesseract OCR.`);
+      }
+      warnings.push(`Local OCR (Tesseract) accuracy is limited. Average confidence: ${Math.round(avgConfidence * 100)}%.`);
+      if (!qualityOk) {
+        warnings.push('LOW QUALITY WARNING: Results are likely inaccurate. Please verify every field carefully or re-upload after checking your GEMINI_API_KEY.');
+      }
+      return { items: parsedItems, rawText: text, method: 'tesseract', warnings };
     } catch (err) {
       console.warn(`[OCR] Tesseract failed:`, err);
     }
@@ -504,7 +562,18 @@ async function runOcr(
 
   // 6. Mock fallback
   console.warn(`[OCR] All methods failed — using mock data`);
-  return { items: generateMockItems(), rawText: '[Mock OCR data]', method: 'mock' };
+  return { items: generateMockItems(), rawText: '[Mock OCR data]', method: 'mock', warnings };
+}
+
+// ---------------------------------------------------------------------------
+// Quality gate: assess Tesseract output quality
+// ---------------------------------------------------------------------------
+
+function assessQuality(items: ParsedItem[]): { avgConfidence: number; qualityOk: boolean } {
+  if (items.length === 0) return { avgConfidence: 0, qualityOk: false };
+  const avgConfidence = items.reduce((sum, i) => sum + i.confidence, 0) / items.length;
+  // Quality is OK only if average confidence >= 0.5 (50%)
+  return { avgConfidence, qualityOk: avgConfidence >= 0.5 };
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +638,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const filePath = path.join(UPLOADS_DIR, safeFilename);
   await fs.writeFile(filePath, buffer);
 
-  let result: { items: ParsedItem[]; rawText: string; method: string };
+  let result: { items: ParsedItem[]; rawText: string; method: string; warnings: string[] };
   try {
     result = await runOcr(buffer, mimeType, uploadedFile.name);
   } catch (ocrError) {
@@ -580,8 +649,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const { items, rawText, method: ocrMethod } = result;
-  console.log(`[OCR] "${ocrMethod}" → ${items.length} items from "${uploadedFile.name}"`);
+  const { items, rawText, method: ocrMethod, warnings } = result;
+  console.log(`[OCR] "${ocrMethod}" → ${items.length} items from "${uploadedFile.name}"${warnings.length > 0 ? ` (warnings: ${warnings.join('; ')})` : ''}`);
 
   const userId = session.user?.email ?? 'unknown';
   const insertResult = db
@@ -604,5 +673,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     items,
     isMock: ocrMethod === 'mock',
     ocrMethod,
+    warnings,
   });
 }
