@@ -243,13 +243,13 @@ export default function BatchPreview({ rows, onBack }: Props) {
                       onChange={e => updateRow(row.rowIndex, 'unitNo', e.target.value)}
                       disabled={rowDone} className={inputCls('font-mono')} />
                   </td>
-                  <td className="whitespace-nowrap px-1 py-1">
-                    <input type="text" value={row.description} size={28}
+                  <td className="min-w-[200px] px-1 py-1">
+                    <input type="text" value={row.description}
                       onChange={e => updateRow(row.rowIndex, 'description', e.target.value)}
-                      disabled={rowDone} className={inputCls('')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="whitespace-nowrap px-1 py-1">
-                    <input type="number" value={row.finalPrice} size={7}
+                    <input type="number" value={row.finalPrice} size={5}
                       onChange={e => updateRow(row.rowIndex, 'finalPrice', parseFloat(e.target.value) || 0)}
                       disabled={rowDone} step="0.01" min="0"
                       className={inputCls('text-right tabular-nums')} />
