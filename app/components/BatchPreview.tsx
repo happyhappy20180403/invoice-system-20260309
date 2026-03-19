@@ -55,6 +55,9 @@ export default function BatchPreview({ rows, onBack }: Props) {
   const [results, setResults] = useState<BatchSubmitResult[] | null>(null);
   const [retryIndices, setRetryIndices] = useState<number[]>([]);
 
+  const failedIndices = results?.filter(r => !r.success && r.rowIndex >= 0).map(r => r.rowIndex) ?? [];
+  const succeededIndices = new Set(results?.filter(r => r.success).map(r => r.rowIndex) ?? []);
+
   const updateRow = useCallback((rowIndex: number, field: keyof BatchRowWithMatch, value: string | number) => {
     setEditedRows(prev =>
       prev.map(r => r.rowIndex === rowIndex ? { ...r, [field]: value } : r),
@@ -70,21 +73,54 @@ export default function BatchPreview({ rows, onBack }: Props) {
   }, []);
 
   const toggleSelectAll = useCallback(() => {
-    setSelected(prev =>
-      prev.size === editedRows.length
-        ? new Set()
-        : new Set(editedRows.map(r => r.rowIndex)),
-    );
-  }, [editedRows]);
+    const pendingRows = editedRows.filter(r => !succeededIndices.has(r.rowIndex));
+    const allPendingSelected = pendingRows.every(r => selected.has(r.rowIndex));
+    if (allPendingSelected) {
+      // Deselect all pending
+      setSelected(prev => {
+        const next = new Set(prev);
+        for (const r of pendingRows) next.delete(r.rowIndex);
+        return next;
+      });
+    } else {
+      // Select all pending
+      setSelected(prev => {
+        const next = new Set(prev);
+        for (const r of pendingRows) next.add(r.rowIndex);
+        return next;
+      });
+    }
+  }, [editedRows, selected, succeededIndices]);
 
   const runSubmit = useCallback(async (indices?: number[]) => {
     setIsSubmitting(true);
-    setResults(null);
     try {
-      const result = await batchCreateInvoicesAction(editedRows, indices);
-      setResults(result);
+      const newResults = await batchCreateInvoicesAction(editedRows, indices);
+      // Merge with existing results (keep previous successes, update/add new)
+      setResults(prev => {
+        if (!prev) return newResults;
+        const merged = [...prev];
+        for (const r of newResults) {
+          const idx = merged.findIndex(m => m.rowIndex === r.rowIndex);
+          if (idx >= 0) merged[idx] = r;
+          else merged.push(r);
+        }
+        return merged;
+      });
+      // Deselect successfully submitted rows
+      const succeeded = new Set(newResults.filter(r => r.success).map(r => r.rowIndex));
+      if (succeeded.size > 0) {
+        setSelected(prev => {
+          const next = new Set(prev);
+          for (const idx of succeeded) next.delete(idx);
+          return next;
+        });
+      }
     } catch (err) {
-      setResults([{ rowIndex: -1, success: false, error: String(err) }]);
+      setResults(prev => {
+        const errResult = { rowIndex: -1, success: false as const, error: String(err) };
+        return prev ? [...prev, errResult] : [errResult];
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -112,9 +148,6 @@ export default function BatchPreview({ rows, onBack }: Props) {
       setIsSubmitting(false);
     }
   }, [editedRows, retryIndices]);
-
-  const failedIndices = results?.filter(r => !r.success && r.rowIndex >= 0).map(r => r.rowIndex) ?? [];
-  const disabled = !!results;
 
   // Compact input style
   const inputCls = (w: string) =>
@@ -181,6 +214,8 @@ export default function BatchPreview({ rows, onBack }: Props) {
                 ? 'bg-yellow-50'
                 : '';
 
+              const rowDone = succeededIndices.has(row.rowIndex);
+
               return (
                 <tr key={row.rowIndex} className={`border-b last:border-0 transition ${rowBg}`}>
                   <td className="px-1 py-1 text-center">
@@ -188,7 +223,7 @@ export default function BatchPreview({ rows, onBack }: Props) {
                       type="checkbox"
                       checked={selected.has(row.rowIndex)}
                       onChange={() => toggleSelect(row.rowIndex)}
-                      disabled={disabled}
+                      disabled={rowDone}
                       className="rounded"
                     />
                   </td>
@@ -205,37 +240,37 @@ export default function BatchPreview({ rows, onBack }: Props) {
                   <td className="px-1 py-1">
                     <input type="text" value={row.contactName}
                       onChange={e => updateRow(row.rowIndex, 'contactName', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="text" value={row.accountCode}
                       onChange={e => updateRow(row.rowIndex, 'accountCode', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="text" value={row.taxType}
                       onChange={e => updateRow(row.rowIndex, 'taxType', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="text" value={row.trackingOption1}
                       onChange={e => updateRow(row.rowIndex, 'trackingOption1', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="text" value={row.trackingOption2}
                       onChange={e => updateRow(row.rowIndex, 'trackingOption2', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="text" value={row.reference}
                       onChange={e => updateRow(row.rowIndex, 'reference', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1">
                     <input type="date" value={row.dueDate}
                       onChange={e => updateRow(row.rowIndex, 'dueDate', e.target.value)}
-                      disabled={disabled} className={inputCls('w-full')} />
+                      disabled={rowDone} className={inputCls('w-full')} />
                   </td>
                   <td className="px-1 py-1 text-center">
                     <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${isLowScore ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
