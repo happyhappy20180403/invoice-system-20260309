@@ -11,15 +11,18 @@ export const authConfig: NextAuthConfig = {
     {
       id: 'xero',
       name: 'Xero',
-      type: 'oidc',
-      issuer: 'https://identity.xero.com',
+      type: 'oauth',
       clientId: process.env.XERO_CLIENT_ID!,
       clientSecret: process.env.XERO_CLIENT_SECRET!,
+      wellKnown: 'https://identity.xero.com/.well-known/openid-configuration',
       authorization: {
+        url: 'https://login.xero.com/identity/connect/authorize',
         params: {
           scope: 'openid profile email offline_access accounting.invoices accounting.contacts accounting.settings.read',
         },
       },
+      token: 'https://identity.xero.com/connect/token',
+      userinfo: 'https://identity.xero.com/connect/userinfo',
       profile(profile) {
         return {
           id: profile.xero_userid ?? profile.sub,
